@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<plugin name="advancedsearch" version="0.1" active="1">
+  <author>Jeremy Dufraisse</author>
+  <label>Advanced Search</label>
+  <desc>Nouvel affichage des resultats de recheche</desc>
+</plugin>

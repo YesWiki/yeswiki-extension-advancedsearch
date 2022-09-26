@@ -1,0 +1,91 @@
+{# # This file is part of the YesWiki Extension advancedsearch.
+# Authors : see README.md file that was distributed with this source code.
+# For the full copyright and license information, please view the LICENSE
+# file that was distributed with this source code. #}
+
+{% if displayForm %}
+  <form action="{{ url({method:""}) }}" method="get" class="search-form">
+    <div class="input-prepend input-append input-group input-group-lg">
+      <span class="add-on input-group-addon"><i class="fa fa-search icon-search"></i></span>
+      <input 
+          name="phrase" 
+          type="text" 
+          class="form-control" 
+          placeholder="{{ args.label }}" 
+          size="{{ args.size }}"
+          value="{{ searchText }}" >
+      <span class="input-group-btn input-group-addon">
+        <input 
+          type="submit" 
+          class="btn btn-primary btn-lg" 
+          value="{{ args.button }}" />
+      </span>
+      </div>
+      <span class="">
+        <small>{{ _t('NEWTEXTSEARCH_HINT') }}</small>
+      </span>
+      <br>
+    </div>
+  </form>
+{% endif %}
+
+{{ include_css('tools/advancedsearch/styles/advancedsearch.css') }}
+{{ include_javascript('javascripts/vendor/vue/vue.js') }}
+{{ include_javascript('tools/advancedsearch/javascripts/advancedsearch-dynamic.js', false, true) }}
+
+<div class="search-results" data-args="{{ args|json_encode }}" data-initialsearchtext="{{ searchText }}" data-titles-keys="{{formsTitles|keys|json_encode}}" data-titles="{{formsTitles|json_encode}}">
+  <div v-if="ready && searchText.length > 0" v-show="doMContentLoaded">
+    <template v-if="Object.keys(results).length == 0">
+      <hr/>
+      <b v-if="!updating">{{ _t('NO_SEARCH_RESULT') }}.</b>
+    </template>
+    <template v-else-if="args.separator.length == 0">
+      <hr/>
+      <b>{{ _t('SEARCH_RESULTS') }}[{{ "{{searchText}}" }}] :</b><br/>
+      {% block results %}
+        <ol>
+          <template v-for="(page) in results">
+            {% block liWithNumber %}
+              <li>
+                <h4 class="h4-search-results">
+                  {% block link %}
+                    <a 
+                      :href="wiki.url(page.tag+(args.viewtype == 'modal' ? '/iframe' : ''),{searchAnchor:searchText})+'#searchAnchor'"
+                      :class="{['new-window']:(args.viewtype == 'newtab'),modalbox:(args.viewtype == 'modal')}"
+                      :data-iframe="args.viewtype == 'modal' ? '1' : false"
+                      :data-size="args.viewtype == 'modal' ? 'modal-lg' : false"
+                      :title="page.title ?? page.tag"
+                      >
+                      {{ "{{ (page.title && page.title.length > 0) ? (page.title.length > 70 ? page.title.slice(0,70) + '…': page.title) : page.tag }}" }}
+                    </a>
+                  {% endblock %}
+                </h4>
+                <span v-if="page.preRendered && page.preRendered.length > 0" v-html="page.preRendered"></span>
+              </li>
+            {% endblock %}
+          </template>
+        </ol>
+        {% block seeMore %}
+          <div
+            v-if="showSeeMoreButton(results,typeof keyAsType == 'undefined' ? '' : keyAsType)"
+            class="btn btn-info btn-xs"
+            :data-type="typeof keyAsType == 'undefined' ? '' : keyAsType"
+            @click="moreResults"
+            :disabled="updating"
+            >
+            {{ _t('ADVANCEDSEARCH_SEE_MORE') }}
+          </div>
+        {% endblock %}
+      {% endblock %}
+    </template>
+    <p v-else>
+      {{ _t('SEARCH_RESULT_OF') }}"{{ "{{searchText}}" }}"&nbsp;:
+      <template v-for="(page, key, index) in results">
+        <span v-if="index != 0" v-html="args.separator"></span>
+        {{ block('link') }}
+      </template>
+    </p>
+    <spinner-loader v-if="updating" class="overlay"></spinner-loader>
+  </div>
+  <spinner-loader v-else-if="updating && doMContentLoaded" :height="400"></spinner-loader>
+</div>

@@ -1,0 +1,48 @@
+/*
+ * This file is part of the YesWiki Extension advancedsearch.
+ *
+ * Authors : see README.md file that was distributed with this source code.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+ 
+div.newtextsearch-by-category-container {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+div.newtextsearch-by-category-container > .newtextsearch-by-category-group{
+    padding: 5px;
+    flex-grow: 1;
+}
+div.newtextsearch-by-category-container > .newtextsearch-by-category-group a {
+    overflow-x: hidden;
+}
+
+p.search-results {
+  margin-top: 0 ;
+  margin-left: 1rem ;
+  word-wrap: break-word;
+}
+p.search-results > i {
+  color: silver;
+}
+
+.h4-search-results {
+  margin-bottom: 0.2rem;
+}
+
+/* à retirer après fusion dans le coeur */
+
+.input-group-lg > .form-control, .input-group-lg > .input-group-addon, 
+.input-group-lg > .input-group-btn > .btn {
+  padding: 10px 16px !important;
+}
+
+.input-group-addon:last-child {
+  height: 46px;
+}
+.input-group-btn:last-child > .btn {
+  height: 45.9px;
+}

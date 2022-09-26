@@ -1,0 +1,64 @@
+{# # This file is part of the YesWiki Extension advancedsearch.
+# Authors : see README.md file that was distributed with this source code.
+# For the full copyright and license information, please view the LICENSE
+# file that was distributed with this source code. #}
+
+{% macro displayResult(title,elems,args) %}
+    {% if elems is not empty %}
+        <div class="newtextsearch-by-category-group {{ 
+              args.nbcols == 3 
+              ? 'col-md-4' 
+              : (
+                args.nbcols == 2 
+                ? 'col-md-6' 
+                : (
+                  args.nbcols == 1
+                  ? 'col-md-12' 
+                  : ''
+                )
+              ) }}">
+            <h3>{{ title }}</h3>
+            
+            <ol>
+            {% for page in elems %}
+                {{ block('liWithNumber') }}
+            {% endfor %}
+            </ol>
+        </div>
+    {% endif %}
+{% endmacro %}
+
+{% extends "@core/newtextsearch.twig" %}
+
+{% block results %}
+  {# show by forms or pages#}
+  <div class="newtextsearch-by-category-container">
+    <template v-for="(keyAsType) in titlesKeys">
+      <template v-if="filterResultsAccordingType(results,keyAsType).length > 0">
+        <div class="newtextsearch-by-category-group {{ 
+                args.nbcols == 3 
+                ? 'col-md-4' 
+                : (
+                  args.nbcols == 2 
+                  ? 'col-md-6' 
+                  : (
+                    args.nbcols == 1
+                    ? 'col-md-12' 
+                    : ''
+                  )
+                ) }}">
+              <h3 v-html="titles[keyAsType]"></h3>
+              
+              <ol>
+                <template v-for="(page) in results">
+                  <template v-if="isResultOfType(page,keyAsType)">
+                      {{ block('liWithNumber') }}
+                  </template>
+                </template>
+              </ol>
+              {{ block('seeMore') }}
+          </div>
+      </template>
+    </template>
+  </div>
+{% endblock %}

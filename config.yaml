@@ -1,0 +1,14 @@
+# This file is part of the YesWiki Extension advancedsearch.
+# Authors : see README.md file that was distributed with this source code.
+# For the full copyright and license information, please view the LICENSE
+# file that was distributed with this source code.
+services:
+  _defaults:
+    autowire: true
+    public: true
+
+  YesWiki\Advancedsearch\Service\:
+    resource: 'services/*'
+
+  YesWiki\Advancedsearch\Controller\:
+    resource: 'controllers/*'
