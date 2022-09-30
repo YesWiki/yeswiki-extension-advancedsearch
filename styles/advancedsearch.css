@@ -33,7 +33,14 @@ p.search-results > i {
   margin-bottom: 0.2rem;
 }
 
-/* à retirer après fusion dans le coeur */
+
+/* à retirer après fusion dans le coeur - thème margot */
+
+.search-form .btn-search {
+  background-color: var(--primary-color);
+  color: var(--neutral-light-color);
+  z-index: 0 !important;
+}
 
 .input-group-lg > .form-control, .input-group-lg > .input-group-addon, 
 .input-group-lg > .input-group-btn > .btn {
