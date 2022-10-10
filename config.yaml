@@ -10,5 +10,11 @@ services:
   YesWiki\Advancedsearch\Service\:
     resource: 'services/*'
 
+  YesWiki\Advancedsearch\Service\ActionsBuilderService:
+    decorates: YesWiki\Aceditor\Service\ActionsBuilderService
+    decoration_on_invalid: null
+    arguments:
+      $parentActionsBuilderService: '@.inner'
+
   YesWiki\Advancedsearch\Controller\:
     resource: 'controllers/*'
