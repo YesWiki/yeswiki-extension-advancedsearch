@@ -203,29 +203,30 @@ class AdvancedSearchService
         // extract needles with values in list
         // find in values for entries
         $forms = $this->formManager->getAll();
-        $needles = $this->searchManager->searchWithLists(str_replace(array('*', '?'), array('', '_'), $searchText), $forms);
-        $requeteSQLForList = '';
+        $needles = $this->searchManager->searchWithLists($searchText, $forms);
         if (!empty($needles)) {
-            $first = true;
+            $searches = [];
             // generate search
             foreach ($needles as $needle => $results) {
+                $currentSearches = [];
+                // add regexp standard search in page not entries
+                $needleFormatted = $this->prepareNeedleForRegexpCaseInsensitive($needle);
+                $search = str_replace('_', '\\_', $needleFormatted);
+                $currentSearches[] = 'body REGEXP \''.$search.'\'';
+
+                // add regexp standard search for entries
+                $search = $this->convertToRawJSONStringForREGEXP($needleFormatted);
+                $search = str_replace('_', '\\_', $search);
+                $currentSearches[] = 'body REGEXP \''.$search.'\'';
+
                 if (!empty($results)) {
-                    if ($first) {
-                        $first = false;
-                    } else {
-                        $requeteSQLForList .= ' AND ';
-                    }
-                    $requeteSQLForList .= '(';
-                    // add regexp standard search
-                    $requeteSQLForList .= 'body REGEXP \''.$needle.'\'';
                     // add search in list
                     // $results is an array not empty only if list
                     foreach ($results as $result) {
-                        $requeteSQLForList .= ' OR ';
                         if (!$result['isCheckBox']) {
-                            $requeteSQLForList .= ' body LIKE \'%"'.str_replace('_', '\\_', $result['propertyName']).'":"'.$result['key'].'"%\'';
+                            $currentSearches[] = ' body LIKE \'%"'.str_replace('_', '\\_', $result['propertyName']).'":"'.$result['key'].'"%\'';
                         } else {
-                            $requeteSQLForList .= ' body REGEXP \'"'.str_replace('_', '\\_', $result['propertyName']).'":(' .
+                            $currentSearches[] = ' body REGEXP \'"'.str_replace('_', '\\_', $result['propertyName']).'":(' .
                                 '"'.$result['key'] . '"'.
                                 '|"[^"]*,' . $result['key'] . '"'.
                                 '|"' . $result['key'] . ',[^"]*"'.
@@ -233,22 +234,17 @@ class AdvancedSearchService
                                 ')\'';
                         }
                     }
-                    $requeteSQLForList .= ')';
                 }
-            }
-        }
-        if (!empty($requeteSQLForList)) {
-            $requeteSQLForList = ' OR ('.$requeteSQLForList.') ';
-        }
 
-        // Modification de caractère spéciaux
-        $phraseFormatted= str_replace(array('*', '?'), array('%', '_'), $searchText);
-        $phraseFormatted = $this->dbService->escape($phraseFormatted);
+                $searches[] = '('.implode(' OR ', $currentSearches).')';
+            }
+            $requeteSQL = '('.implode(' AND ', $searches).')';
+        }
 
         // TODO retrouver la facon d'afficher les commentaires (AFFICHER_COMMENTAIRES ? '':'AND tag NOT LIKE "comment%"').
         $requestfull = "SELECT body, tag FROM {$this->dbService->prefixTable('pages')} ".
             "WHERE latest = \"Y\" {$this->aclService->updateRequestWithACL()} ".
-            "AND (body LIKE \"%{$phraseFormatted}%\"{$requeteSQLForList})";
+            "AND $requeteSQL";
 
         return compact('requestfull', 'needles');
     }
@@ -383,5 +379,50 @@ class AdvancedSearchService
         );
 
         return $needle;
+    }
+
+    /**
+     * prepare needle by removing accents and define string for regexp
+     * @param string $needle
+     * @return string
+     */
+    public function prepareNeedleForRegexpCaseInsensitive(string $needle): string
+    {
+        // lowercase
+        $needle = str_replace(
+            ['B','C','D','F','G','H','J','K','L','M','N','P','Q','R','S','T','V','W','X','Z'],
+            ['b','c','d','f','g','h','j','k','l','m','n','p','q','r','s','t','v','w','x','z'],
+            $needle
+        );
+
+        // add for regexp
+        $needle = str_replace(
+            [
+                'b','c','d','f','g',
+                'h','j','k','l','m',
+                'n','p','q','r','s',
+                't','v','w','x','z'
+            ],
+            [
+                '(b|B)','(c|C)','(d|D)','(f|F)','(g|G)',
+                '(h|H)','(j|J)','(k|K)','(l|L)','(m|M)',
+                '(n|N)','(p|P)','(q|Q)','(r|R)','(s|S)',
+                '(t|T)','(v|V)','(w|W)','(x|X)','(z|Z)'
+            ],
+            $needle
+        );
+
+        return $needle;
+    }
+
+    /** format data as in sql
+     * @param string $rawValue
+     * @return string $formatedValue
+     */
+    private function convertToRawJSONStringForREGEXP(string $rawValue): string
+    {
+        $valueJSON = substr(json_encode($rawValue), 1, strlen(json_encode($rawValue))-2);
+        $formattedValue = str_replace(['\\','\''], ['\\\\','\\\''], $valueJSON);
+        return $this->dbService->escape($formattedValue);
     }
 }
