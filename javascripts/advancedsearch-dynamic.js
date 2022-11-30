@@ -24,23 +24,28 @@ let appParams = {
     components: { SpinnerLoader},
     data: function() {
         return {
-            doMContentLoaded: false,
-            updating: true,
-            searchText: "",
-            results: {},
+            abortController: null,
             args: {
                 separator: "",
                 viewtype: "modal",
                 displaytext: ""
-            },
+            },            doMContentLoaded: false,
+            doNotShowMoreFor: [],
+            ready: false,
+            results: {},
+            searchText: "",
             textInput: null,
             titles: {},
             titlesKeys: [],
-            doNotShowMoreFor: [],
-            ready: false,
+            updating: true
         };
     },
     methods: {
+        getSignalFromNewAbortController: function (){
+            this.stopCurrentSearch();
+            this.abortController = new AbortController();
+            return this.abortController.signal;
+        },
         updateSearchText: function () {
             this.searchText = $(this.textInput).val();
         },
@@ -84,57 +89,57 @@ let appParams = {
             history.pushState({ filter: true }, null, newUrl);
         },
         showSeeMoreButton: function(results, type){
-            let app = this;
             if (type == ''){
-                return (Object.keys(results).length > 0 && Object.keys(results).length % app.args.limit == 0);
-            } else if (app.doNotShowMoreFor.includes(type)) {
+                return (Object.keys(results).length > 0 && Object.keys(results).length % this.args.limit == 0);
+            } else if (this.doNotShowMoreFor.includes(type)) {
                 return false;
             } else {
-                return (app.filterResultsAccordingType(results, type).length % app.args.limit == 0);
+                return (this.filterResultsAccordingType(results, type).length % this.args.limit == 0);
             }
         },
         moreResults: function(event) {
-            let app = this;
             event.preventDefault();
             let button = event.target;
             let type = button.dataset.type;
             let currentResults = (type == '')
-                ? Object.values(app.results)
-                : app.filterResultsAccordingType(app.results,type).map((key)=>{return app.results[key];})
+                ? Object.values(this.results)
+                : this.filterResultsAccordingType(this.results,type).map((key)=>{return this.results[key];})
             let previousTags = currentResults.map((page)=>page.tag).join(',');
-            app.searchTextFromApi({excludes:previousTags,categories:type});
+            this.searchTextFromApi({excludes:previousTags,categories:type});
         },
         searchTextFromApi: function(extraParams = {}){
-            let app = this;
-            app.updating = true;
+            this.stopCurrentSearch();
+            this.updating = true;
             let params = {};
-            if (app.args.displaytext){
+            if (this.args.displaytext){
                 params.displaytext = true;
             }
-            if (app.args.limit > 0){
-                params.limit = app.args.limit;
+            if (this.args.limit > 0){
+                params.limit = this.args.limit;
             }
-            if (app.args.template == "newtextsearch-by-category.twig"){
+            if (this.args.template == "newtextsearch-by-category.twig"){
                 params.limitByCat = true;
             }
-            if (app.args.hasOwnProperty('displayorder') && app.args.displayorder.length > 0){
-                params.categories = Array.isArray(app.args.displayorder) ? app.args.displayorder.join(',') : app.args.displayorder;
+            if (this.args.hasOwnProperty('displayorder') && this.args.displayorder.length > 0){
+                params.categories = Array.isArray(this.args.displayorder) ? this.args.displayorder.join(',') : this.args.displayorder;
             }
-            if (app.args.hasOwnProperty('onlytags') && app.args.onlytags.length > 0){
-                params.onlytags = app.args.onlytags.join(',');
+            if (this.args.hasOwnProperty('onlytags') && this.args.onlytags.length > 0){
+                params.onlytags = this.args.onlytags.join(',');
             }
             for (const key in extraParams) {
                 if (key.length > 0){
                     params[key] = extraParams[key];
                 }
             }
-            $.ajax({
-                method: "GET",
-                url: wiki.url(`api/search/${app.searchText}`),
-                data: params,
-                success: function(data){
-                    // append data in results (which has to be cleaned before)
-                    let resultsAsArray = Object.values(app.results);
+            fetch(wiki.url(`api/search/${this.searchText}`,params),{signal:this.getSignalFromNewAbortController()})
+                .then((response)=>{
+                    if (!response.ok){
+                        throw `response not ok ; code : ${response.status} (${response.statusText})`;
+                    }
+                    return response.json();
+                })
+                .then((data)=>{
+                    let resultsAsArray = Object.values(this.results);
                     let dataAsArray =
                         (Array.isArray(data))
                         ? data
@@ -145,9 +150,9 @@ let appParams = {
                     if (extraParams.hasOwnProperty('categories') &&
                         !extraParams.categories.includes(',') &&
                         dataAsArray.length == 0 &&
-                        !app.doNotShowMoreFor.includes(extraParams.categories)
+                        !this.doNotShowMoreFor.includes(extraParams.categories)
                         ){
-                        app.doNotShowMoreFor.push(extraParams.categories);
+                        this.doNotShowMoreFor.push(extraParams.categories);
                     }
                     dataAsArray.forEach((value)=>{
                         resultsAsArray.push(value);
@@ -157,30 +162,42 @@ let appParams = {
                         let idx = (value.hasOwnProperty('tag') && value.tag !='') ? value.tag : index; 
                         results[idx] = value;
                     });
-                    app.results = results;
+                    this.results = results;
+                    this.updating = false;
+                })
+                // do nothing on error
+                .catch((e)=>{
+                    if (e.name !== 'AbortError'){
+                        this.updating = false; // do not change updating if aborted
+                        throw e;
+                    }
+                })
+                .finally(()=>{
+                    this.ready = true;
+                })
                 },
-                error: function(xhr,status,error){
-                    // do nothing
-                },
-                complete: function(){
-                    app.updating = false;
-                    app.ready = true;
+        stopCurrentSearch: function(){
+            if (this.abortController !== null){
+                try {
+                    this.abortController.abort();
+                } catch (error) {
+                    console.log(`Error when aborting : ${error.toString()}`)
                 }
-            });
+            }
+            this.abortController = null;
         }
     },
     watch: {
         searchText: function (newValue,oldValue){
-            let app = this;
-            app.updateUrl(newValue);
+            this.updateUrl(newValue);
             if (newValue != oldValue){
                 if (newValue.length == 0){
                     this.results = {};
                     this.updating = false;
                 } else {
                     // reset results
-                    app.results = {};
-                    app.searchTextFromApi();
+                    this.results = {};
+                    this.searchTextFromApi();
                 }
             } else {
                 this.updating = false;
