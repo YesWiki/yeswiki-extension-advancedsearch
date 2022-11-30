@@ -99,63 +99,67 @@ class AdvancedSearchService
             $this->searchSQL(
                 $data,
                 $sqlRequest,
-                $sqlOptions + ['limit'=>$limit]
-            );
-        } elseif (count($options['categories']) == 1 &&
-                $this->isTagCategory($options['categories'][0])) {
-            $tag = $this->getTagCategory($options['categories'][0]);
-            $pagesOrEntries = $this->tagsManager->getPagesByTags($tag);
-            $selectedTags = array_map(function ($page) {
-                return $page['tag'];
-            }, $pagesOrEntries);
-            $sqlRequest = $this->addOnlyTags(
-                $sqlRequest,
-                $selectedTags
-            );
-            $this->searchSQL(
-                $data,
-                $sqlRequest,
-                $sqlOptions + ['limit'=>$options['limit']]
+                ['limit'=>$limit,'limitByCat' => -1] + $sqlOptions
             );
         } else {
-            $forms = [];
-            $withPage = false;
-            $withLogPage = false;
-            foreach ($options['categories'] as $category) {
-                if (strval(intval($category)) == $category) {
-                    if (intval($category) > 0 && !in_array($category, $forms)) {
-                        $forms[] = $category;
-                    }
-                } elseif ($category == "page") {
-                    $withPage = true;
-                } elseif ($category == "logpage") {
-                    $withLogPage = true;
+            $onlyTags = $this->keepOnlyTagsCategories($options['categories']);
+            $noTags = $this->removeTagsCategories($options['categories']);
+            if (empty($noTags) && !empty($onlyTags)) {
+                foreach ($onlyTags as $tagCat) {
+                    $tag = $this->getTagCategory($tagCat);
+                    $pagesOrEntries = $this->tagsManager->getPagesByTags($tag);
+                    $selectedTags = array_map(function ($page) {
+                        return $page['tag'];
+                    }, $pagesOrEntries);
+                    $this->searchSQL(
+                        $data,
+                        $this->addOnlyTags(
+                            $sqlRequest,
+                            $selectedTags
+                        ),
+                        ['limit'=>$options['limit'],'limitByCat' => -1] + $sqlOptions
+                    );
                 }
-            }
-            if ($withPage || $withLogPage || !empty($forms)) {
-                if (empty($forms)) {
-                    if ($withPage && $withLogPage) {
-                        $sqlRequest = $this->removeEntriesFilter($sqlRequest);
+            } elseif (!empty($noTags)) {
+                $forms = [];
+                $withPage = false;
+                $withLogPage = false;
+                foreach ($noTags as $category) {
+                    if (strval(intval($category)) == $category) {
+                        if (intval($category) > 0 && !in_array($category, $forms)) {
+                            $forms[] = $category;
+                        }
+                    } elseif ($category == "page") {
+                        $withPage = true;
+                    } elseif ($category == "logpage") {
+                        $withLogPage = true;
+                    }
+                }
+                if ($withPage || $withLogPage || !empty($forms)) {
+                    if (empty($forms)) {
+                        if ($withPage && $withLogPage) {
+                            $sqlRequest = $this->removeEntriesFilter($sqlRequest);
+                        } elseif ($withPage) {
+                            $sqlRequest = $this->removeEntriesFilter($sqlRequest);
+                            $sqlRequest = $this->removeLogPageFilter($sqlRequest);
+                        } else {
+                            $sqlRequest = $this->appendLogPageFilter($sqlRequest);
+                        }
+                    } elseif ($withPage && $withLogPage) {
+                        $sqlRequest = $this->appendFormsFilter($sqlRequest, $forms, true);
                     } elseif ($withPage) {
-                        $sqlRequest = $this->removeEntriesFilter($sqlRequest);
+                        $sqlRequest = $this->appendFormsFilter($sqlRequest, $forms, true);
                         $sqlRequest = $this->removeLogPageFilter($sqlRequest);
+                    } elseif ($withLogPage) {
+                        $sqlRequest = $this->appendFormsFilter($sqlRequest, $forms, true, true);
                     } else {
-                        $sqlRequest = $this->appendLogPageFilter($sqlRequest);
+                        $sqlRequest = $this->appendFormsFilter($sqlRequest, $forms, false);
                     }
-                } elseif ($withPage && $withLogPage) {
-                    $sqlRequest = $this->appendFormsFilter($sqlRequest, $forms, true);
-                } elseif ($withPage) {
-                    $sqlRequest = $this->appendFormsFilter($sqlRequest, $forms, true);
-                    $sqlRequest = $this->removeLogPageFilter($sqlRequest);
-                } elseif ($withLogPage) {
-                    $sqlRequest = $this->appendFormsFilter($sqlRequest, $forms, true, true);
-                } else {
-                    $sqlRequest = $this->appendFormsFilter($sqlRequest, $forms, false);
+                    $limit = count($options['categories']) == 1
+                        ? $options['limit']
+                        : self::MAXIMUM_RESULTS_BY_QUERY+$options['limit'];
+                    $this->searchSQL($data, $sqlRequest, $sqlOptions+ ['limit'=>$limit]);
                 }
-                $limit = count($options['categories']) == 1
-                    ? $options['limit']
-                    : self::MAXIMUM_RESULTS_BY_QUERY+$options['limit'];
-                $this->searchSQL($data, $sqlRequest, $sqlOptions+ ['limit'=>$limit]);
             }
         }
 
@@ -190,7 +194,7 @@ class AdvancedSearchService
                 $pageData = [
                     'tag'=>$tag,
                 ];
-                $this->appendTags($pageData, $limits, []);
+                $this->appendTags($pageData);
                 $data['results'][] = $pageData;
             }
         }
@@ -205,6 +209,20 @@ class AdvancedSearchService
     protected function getTagCategory(string $category): string
     {
         return substr($category, strlen('tag:'));
+    }
+
+    protected function keepOnlyTagsCategories(array $categories): array
+    {
+        return array_filter($categories, function ($cat) {
+            return $this->isTagCategory($cat);
+        });
+    }
+
+    protected function removeTagsCategories(array $categories): array
+    {
+        return array_filter($categories, function ($cat) {
+            return !$this->isTagCategory($cat);
+        });
     }
 
     private function searchSQL(array &$dataCompacted, string $sqlRequest, array $options)
@@ -245,9 +263,8 @@ class AdvancedSearchService
                             } elseif ($data['type'] != 'entry') {
                                 $this->appendTitleIfNeeded($data);
                             }
-
                             if ($needAppendTags) {
-                                $this->appendTags($data, $limitsReached, $categories);
+                                $this->appendTags($data);
                             }
                         }
                     }
@@ -256,14 +273,6 @@ class AdvancedSearchService
                         $displaytext &&
                         $forceDisplay) {
                         $this->appendPreRendered($data, $searchText, $needles);
-                    }
-
-                    if ((!$saveData ||
-                        $dataCompacted['extra']['timeLimitReached'])&&
-                        $needAppendTags &&
-                        $forceDisplay
-                    ) {
-                        $saveData = $this->appendTags($data, $limitsReached, $categories) && !$saveData;
                     }
 
                     if ($saveData) {
@@ -581,7 +590,6 @@ class AdvancedSearchService
         if ($limitByCat > 0) {
             $limitsReached = [
                 'all' => false,
-                'tags' => [],
                 'forms' => [],
                 'autoFill' => empty($categories)
             ];
@@ -595,9 +603,6 @@ class AdvancedSearchService
                         $limitsReached['page'] = $limitByCat;
                     } elseif ($category == "logpage") {
                         $limitsReached['logpage'] = $limitByCat;
-                    } elseif ($this->isTagCategory($category)) {
-                        $tag = $this->getTagCategory($category);
-                        $limitsReached['tags'][$tag] = $limitByCat;
                     }
                 }
             }
@@ -669,9 +674,8 @@ class AdvancedSearchService
         return $saveData;
     }
 
-    private function appendTags(array &$data, array &$limitsReached, array $categories): bool
+    private function appendTags(array &$data)
     {
-        $saveData = false;
         $previousTag = $this->wiki->tag;
         $this->wiki->tag = $data["tag"];
         $tags = $this->tagsManager->getAll($data["tag"]);
@@ -683,22 +687,6 @@ class AdvancedSearchService
             }, $tags));
         }
         $this->wiki->tag = $previousTag;
-
-
-        if (!empty($data['tags'])) {
-            foreach ($categories as $category) {
-                if ($this->isTagCategory($category)) {
-                    $tag = $this->getTagCategory($category);
-                    foreach ($data['tags'] as $dataTag) {
-                        if ($dataTag == $tag && !empty($limitsReached['tags'][$tag]) && $limitsReached['tags'][$tag] > 0) {
-                            $limitsReached['tags'][$tag] = $limitsReached['tags'][$tag] - 1;
-                            $saveData = false;
-                        }
-                    }
-                }
-            }
-        }
-        return $saveData;
     }
 
     private function appendPreRendered(array &$data, $searchText, $needles)
