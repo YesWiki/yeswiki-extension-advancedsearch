@@ -139,15 +139,18 @@ let appParams = {
                     return response.json();
                 })
                 .then((data)=>{
+                    if (!('results' in data)){
+                        throw 'Received data badly formatted !';
+                    }
                     let resultsAsArray = Object.values(this.results);
                     let dataAsArray =
-                        (Array.isArray(data))
-                        ? data
-                        : ((typeof data == "object")
-                            ? Object.values(data)
+                        (Array.isArray(data.results))
+                        ? data.results
+                        : ((typeof data.results == "object")
+                            ? Object.values(data.results)
                             : []
                         );
-                    if (extraParams.hasOwnProperty('categories') &&
+                    if ('categories' in extraParams &&
                         !extraParams.categories.includes(',') &&
                         dataAsArray.length == 0 &&
                         !this.doNotShowMoreFor.includes(extraParams.categories)
@@ -159,7 +162,7 @@ let appParams = {
                     });
                     let results = {};
                     resultsAsArray.forEach((value,index)=>{
-                        let idx = (value.hasOwnProperty('tag') && value.tag !='') ? value.tag : index; 
+                        let idx = ('tag' in value && value.tag !='') ? value.tag : index; 
                         results[idx] = value;
                     });
                     this.results = results;
