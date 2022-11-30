@@ -181,7 +181,7 @@ class AdvancedSearchService
         if (!empty($results)) {
             $dataCompacted['extra']['overallLimitReached'] = (count($results) == $limit);
             $dataCompacted['extra']['timeLimitReached'] = false;
-            $limitsReached = $this->prepareLimitsReached($categories, $limitByCat, $limit);
+            $limitsReached = $this->prepareLimitsReached($categories, $limitByCat);
             $needAppendTags = (!empty($categories) && count(array_filter($categories, [$this,'isTagCategory'])) > 0);
             foreach ($results as $key => $page) {
                 if ($this->aclService->hasAccess("read", $page["tag"])) {
@@ -388,11 +388,11 @@ class AdvancedSearchService
     private function addExcludesTags(string &$sqlRequest, array $excludes)
     {
         $filteredExcludes = array_filter($excludes, function ($tag) {
-            return is_string($exclude) && !empty(trim($exclude));
+            return is_string($tag) && !empty(trim($tag));
         });
         if (!empty($filteredExcludes)) {
             $tags = implode(',', array_map(function ($tag) {
-                return $this->dbService->escape(trim($exclude));
+                return "'{$this->dbService->escape(trim($tag))}'";
             }, $filteredExcludes));
             $sqlRequest .= " AND `tag` NOT IN ($tags)";
         }
@@ -518,10 +518,10 @@ class AdvancedSearchService
         return $this->dbService->escape($formattedValue);
     }
 
-    private function prepareLimitsReached($categories, $limitByCat, $limit): array
+    private function prepareLimitsReached($categories, $limitByCat): array
     {
         $limitsReached = [];
-        if ($limitByCat > 0 && $limit > 0) {
+        if ($limitByCat > 0) {
             $limitsReached = [
                 'all' => false,
                 'tags' => [],
@@ -532,15 +532,15 @@ class AdvancedSearchService
                 foreach ($categories as $category) {
                     if (strval(intval($category)) == $category) {
                         if (intval($category) > 0 && !in_array($category, array_keys($limitsReached['forms']))) {
-                            $limitsReached['forms'][$category] = $limit;
+                            $limitsReached['forms'][$category] = $limitByCat;
                         }
                     } elseif ($category == "page") {
-                        $limitsReached['page'] = $limit;
+                        $limitsReached['page'] = $limitByCat;
                     } elseif ($category == "logpage") {
-                        $limitsReached['logpage'] = $limit;
+                        $limitsReached['logpage'] = $limitByCat;
                     } elseif ($this->isTagCategory($category)) {
                         $tag = $this->getTagCategory($category);
-                        $limitsReached['tags'][$tag] = $limit;
+                        $limitsReached['tags'][$tag] = $limitByCat;
                     }
                 }
             }
