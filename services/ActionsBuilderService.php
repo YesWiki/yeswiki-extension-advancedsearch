@@ -54,6 +54,20 @@ trait ActionsBuilderServiceCommon
                 $this->data = $this->previousData;
             }
 
+            if (isset($this->data['action_groups']['advanced-actions']['actions'])) {
+                $this->data['action_groups']['advanced-actions']['actions']['searchinotherpage'] = [
+                    'label' => _t('AB_ADVANCEDSEARCH_SEARCHINOTHERPAGE_LABEL'),
+                    'properties' => [
+                        'page' => [
+                            'label' => _t('AB_ADVANCEDSEARCH_SEARCHINOTHERPAGE_PAGE'),
+                            'type' => 'page-list',
+                            'required' => true,
+                            'value' => 'RechercheTexte'
+                        ]
+                    ],
+                ];
+            }
+
             if (isset($this->data['action_groups']['advanced-actions']['actions']['newtextsearch']['properties'])) {
                 $this->data['action_groups']['advanced-actions']['actions']['newtextsearch']['properties']['label'] = [
                     'label' => _t('AB_advanced_action_textsearch_label_label'),

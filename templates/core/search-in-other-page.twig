@@ -1,0 +1,19 @@
+{# # This file is part of the YesWiki Extension advancedsearch.
+# Authors : see README.md file that was distributed with this source code.
+# For the full copyright and license information, please view the LICENSE
+# file that was distributed with this source code. #}
+
+<div id="bazar-search-{{ linkedPage }}">
+  <form action="{{ url({tag:linkedPage}) }}" method="get" name="search-form-{{ linkedPage }}" id="search-form-{{ linkedPage }}" class="form-horizontal">
+    <div class="bazar-search control-group">
+      <input type="hidden" value="" name="{{ linkedPage ~ (url({tag:linkedPage}) matches '/iframe$/' ? '/iframe' : '') }}" />
+      <div class="input-group input-prepend input-append">
+        <span class="add-on input-group-addon"><i class="fa fa-search icon-search"></i></span>
+        <input type="text" value="{{ keywords }}" name="phrase" placeholder="{{ _t('BAZ_MOT_CLE') }}" class="search-input form-control input-lg">
+        <span class="input-group-btn search-button-container">
+          <input value="{{ _t('BAZ_RECHERCHER') }}" class="btn btn-primary" type="submit" />
+        </span>
+      </div>
+    </div>
+  </form>
+</div>

@@ -10,9 +10,16 @@
  */
 
 return [
+  // actions/documentation.yaml
+  'AB_ADVANCEDSEARCH_SEARCHINOTHERPAGE_LABEL' => 'Search in other page',
+  'AB_ADVANCEDSEARCH_SEARCHINOTHERPAGE_PAGE' => 'Page where redirect the searche',
+
   // actions/NexTextSearch.php
   'ADVANCEDSEARCH_PAGES' => 'Pages',
   'ADVANCEDSEARCH_LOG_PAGES' => 'Log pages',
+
+  // actions/SearchInOtherPageAction.php
+  'ADVANCEDSEARCH_SEARCH_IN_OTHER_PAGE_ERROR' => 'The \'page\' parameter is needed for %{class}!',
 
    // templates/aceditor/actions-builder.tpl.html
    'AB_advanced_action_newtextsearch_template_label' => 'Template',
