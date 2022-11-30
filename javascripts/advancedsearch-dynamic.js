@@ -29,7 +29,8 @@ let appParams = {
                 separator: "",
                 viewtype: "modal",
                 displaytext: ""
-            },            doMContentLoaded: false,
+            },            
+            doMContentLoaded: false,
             doNotShowMoreFor: [],
             ready: false,
             results: {},
@@ -40,10 +41,20 @@ let appParams = {
             updating: true
         };
     },
+    computed: {
+        hasTagCategories: function(){
+            return 'displayorder' in this.args &&
+                (Array.isArray(this.args.displayorder) ? this.args.displayorder : String(this.args.displayorder).split(',')).some((category)=>(category.slice(0,4) == 'tag:'));
+        }
+    },
     methods: {
-        getSignalFromNewAbortController: function (){
+        getSignalFromAbortController: function (stop = true){
+            if (stop){
             this.stopCurrentSearch();
+            }
+            if (this.abortController === null){
             this.abortController = new AbortController();
+            }
             return this.abortController.signal;
         },
         updateSearchText: function () {
@@ -107,8 +118,14 @@ let appParams = {
             let previousTags = currentResults.map((page)=>page.tag).join(',');
             this.searchTextFromApi({excludes:previousTags,categories:type});
         },
-        searchTextFromApi: function(extraParams = {}){
+        searchTextFromApi: function(extraParams = {},stop = true,searchTags = true){
+            if (stop){
             this.stopCurrentSearch();
+            }
+            if (Object.keys(extraParams).length == 0){
+                // clear results
+                this.results = {};
+            }
             this.updating = true;
             let params = {};
             if (this.args.displaytext){
@@ -131,7 +148,7 @@ let appParams = {
                     params[key] = extraParams[key];
                 }
             }
-            fetch(wiki.url(`api/search/${this.searchText}`,params),{signal:this.getSignalFromNewAbortController()})
+            fetch(wiki.url(`api/search/${this.searchText}`,params),{signal:this.getSignalFromAbortController(stop)})
                 .then((response)=>{
                     if (!response.ok){
                         throw `response not ok ; code : ${response.status} (${response.statusText})`;
@@ -139,10 +156,9 @@ let appParams = {
                     return response.json();
                 })
                 .then((data)=>{
-                    if (!('results' in data)){
+                    if (!('results' in data) || !('extra' in data)){
                         throw 'Received data badly formatted !';
                     }
-                    let resultsAsArray = Object.values(this.results);
                     let dataAsArray =
                         (Array.isArray(data.results))
                         ? data.results
@@ -157,16 +173,17 @@ let appParams = {
                         ){
                         this.doNotShowMoreFor.push(extraParams.categories);
                     }
-                    dataAsArray.forEach((value)=>{
-                        resultsAsArray.push(value);
-                    });
-                    let results = {};
-                    resultsAsArray.forEach((value,index)=>{
-                        let idx = ('tag' in value && value.tag !='') ? value.tag : index; 
-                        results[idx] = value;
-                    });
-                    this.results = results;
+                    this.updateResults(dataAsArray);
                     this.updating = false;
+                    if (data.extra.timeLimitReached){
+                        this.updateTitlesIfNeeded(data);
+                        if (this.args.displaytext){
+                            this.updateRenderedIfNeeded(data,extraParams);
+                        }
+                    }
+                    if (searchTags && this.hasTagCategories){
+                        this.updateTagsIfNeeded(data,extraParams);
+                    }
                 })
                 // do nothing on error
                 .catch((e)=>{
@@ -188,6 +205,108 @@ let appParams = {
                 }
             }
             this.abortController = null;
+        },
+        updateResults: function(data){
+            if (this.abortController !== null){
+                data.forEach((value)=>{
+                    if ('tag' in value && value.tag !=''){
+                        if (value.tag in this.results){
+                            if ('title' in value && value.title.length > 0){
+                                if (!('title' in this.results[value.tag]) || 
+                                    this.results[value.tag].title.length == 0){
+                                    this.results[value.tag].title = value.title;
+                                }
+                            }
+                            if ('tags' in value && value.tags.length > 0){
+                                if (!('tags' in this.results[value.tag]) || 
+                                    this.results[value.tag].tags.length == 0){
+                                    this.results[value.tag].tags = value.tags;
+                                }
+                            }
+                            if ('preRendered' in value && value.preRendered.length > 0){
+                                if (!('preRendered' in this.results[value.tag]) || 
+                                    this.results[value.tag].preRendered.length == 0){
+                                    this.results[value.tag].preRendered = value.preRendered;
+                                }
+                            }
+                        } else {
+                            this.results[value.tag] = value;
+                        }
+    
+                    }
+                });
+            }
+        },
+        updateRenderedIfNeeded: function(data,extraParams){
+            if (Array.isArray(data.results)){
+                let entriesWithoutPreRendered = data.results.filter((page)=>(!('preRendered' in page)||page.preRendered.length == 0));
+                if (entriesWithoutPreRendered.length > 0){
+                    this.searchTextFromApi({
+                        ...extraParams,
+                        ...{
+                            forceDisplay: true
+                        }
+                    },false);
+                }
+            }
+        },
+        updateObjectIfNeeded: function(data,key,route){
+            if (Array.isArray(data.results)){
+                let entriesWithoutKey = data.results.filter((page)=>(!(key in page)||page[key].length == 0));
+                if (entriesWithoutKey.length > 0){
+                    let tags = entriesWithoutKey.map((page)=>page.tag);
+                    let formData = new FormData();
+                    tags.forEach((tag,idx)=>{
+                        formData.append(`tags[${idx}]`,tag);
+                    });
+                    fetch(wiki.url(`api/search/${route}/`),{
+                        method: 'POST',
+                        body: new URLSearchParams(formData),
+                        headers : (new Headers()).append('Content-Type','application/x-www-form-urlencoded'),
+                        signal:this.getSignalFromAbortController(false)
+                    })
+                    .then((response)=>{
+                        if (!response.ok){
+                            throw `response not ok ; code : ${response.status} (${response.statusText})`;
+                        }
+                        return response.json();
+                    })
+                    .then((data)=>{
+                        if (!('results' in data) || !Array.isArray(data.results) || !('extra' in data)){
+                            throw 'Received data badly formatted !';
+                        }
+                        this.updateResults(data.results);
+                        // toggle ready
+                        this.ready = false;
+                        this.ready = true;
+                    })
+                    // do nothing on error
+                    .catch((e)=>{
+                        if (e.name !== 'AbortError'){
+                            this.updating = false; // do not change updating if aborted
+                            throw e;
+                        }
+                    })
+                }
+            }
+        },
+        updateTagsIfNeeded: function(data,extraParams){
+            this.updateObjectIfNeeded(data,'tags','getTags');
+            let tagsCat = (Array.isArray(this.args.displayorder) ? this.args.displayorder : String(this.args.displayorder).split(',')).filter((category)=>(category.slice(0,4) == 'tag:'));
+            if (tagsCat.length > 0){
+                tagsCat.forEach((tagCat)=>{
+                    this.searchTextFromApi({
+                        ...extraParams,
+                        ...{
+                            forceDisplay: true,
+                            categories: tagCat
+                        }
+                    },false,false);
+                });
+            }
+        },
+        updateTitlesIfNeeded: function(data){
+            this.updateObjectIfNeeded(data,'title','getTitles');
         }
     },
     watch: {

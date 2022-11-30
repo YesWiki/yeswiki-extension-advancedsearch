@@ -64,6 +64,7 @@ class AdvancedSearchService
     public function getSearch(string $searchText, array $options = []): array
     {
         $options['displaytext'] = (isset($options['displaytext']) && is_bool($options['displaytext'])) ? $options['displaytext'] : false;
+        $options['forceDisplay'] = (isset($options['forceDisplay']) && is_bool($options['forceDisplay'])) ? $options['forceDisplay'] : false;
         $options['limit'] = (isset($options['limit']) && is_int($options['limit']) && $options['limit'] > 0) ? $options['limit'] : 0;
         $options['limitByCat'] = (isset($options['limitByCat']) && is_bool($options['limitByCat'])) ? $options['limitByCat'] : false;
         $options['categories'] = (!empty($options['categories']) && is_string($options['categories'])) ? array_map('strval', explode(',', $options['categories'])) : [];
@@ -83,6 +84,7 @@ class AdvancedSearchService
             'startTime' => $startTime,
             'limitByCat' => $options['limitByCat'] ? $options['limit'] : -1,
             'categories' => $options['categories'],
+            'forceDisplay' => $options['forceDisplay'],
         ];
         $this->addExcludesTags($sqlRequest, $options['excludes']);
         $this->addOnlyTagsNames($sqlRequest, $options['onlytags']);
@@ -90,24 +92,29 @@ class AdvancedSearchService
             if ($options['limitByCat']) {
                 // remove log pages (default)
                 $sqlRequest = $this->removeLogPageFilter($sqlRequest);
+                $limit = self::MAXIMUM_RESULTS_BY_QUERY+$options['limit'];
+            } else {
+                $limit = $options['limit'];
             }
             $this->searchSQL(
                 $data,
                 $sqlRequest,
-                $sqlOptions + ['limit'=>self::MAXIMUM_RESULTS_BY_QUERY+$options['limit']]
+                $sqlOptions + ['limit'=>$limit]
             );
         } elseif (count($options['categories']) == 1 &&
                 $this->isTagCategory($options['categories'][0])) {
             $tag = $this->getTagCategory($options['categories'][0]);
             $pagesOrEntries = $this->tagsManager->getPagesByTags($tag);
+            $selectedTags = array_map(function ($page) {
+                return $page['tag'];
+            }, $pagesOrEntries);
+            $sqlRequest = $this->addOnlyTags(
+                $sqlRequest,
+                $selectedTags
+            );
             $this->searchSQL(
                 $data,
-                $this->addOnlyTags(
-                    $sqlRequest,
-                    array_map(function ($page) {
-                        return $page['tag'];
-                    }, $pagesOrEntries)
-                ),
+                $sqlRequest,
                 $sqlOptions + ['limit'=>$options['limit']]
             );
         } else {
@@ -155,6 +162,41 @@ class AdvancedSearchService
         return $data;
     }
 
+    public function getTitles(array $tags): array
+    {
+        $data = [
+            'results' => [],
+            'extra' => [],
+        ];
+        foreach ($tags as $tag) {
+            $pageData = [
+                'tag'=>$tag,
+            ];
+            $this->appendTitleIfNeeded($pageData);
+            $data['results'][] = $pageData;
+        }
+        return $data;
+    }
+
+    public function getTags(array $tags): array
+    {
+        $data = [
+            'results' => [],
+            'extra' => [],
+        ];
+        $limits = [];
+        foreach ($tags as $tag) {
+            if ($this->aclService->hasAccess("read", $tag)) {
+                $pageData = [
+                    'tag'=>$tag,
+                ];
+                $this->appendTags($pageData, $limits, []);
+                $data['results'][] = $pageData;
+            }
+        }
+        return $data;
+    }
+
     protected function isTagCategory(string $category): bool
     {
         return substr($category, 0, strlen('tag:')) == 'tag:' && strlen($category) > strlen('tag:');
@@ -174,14 +216,15 @@ class AdvancedSearchService
             'limit'=>$limit,
             'limitByCat' => $limitByCat,
             'categories' => $categories,
-            'startTime' => $startTime
+            'startTime' => $startTime,
+            'forceDisplay' => $forceDisplay
         ) = $options;
         $sqlRequest = $this->addSQLLimit($sqlRequest, $limit);
         $results = $this->dbService->loadAll($sqlRequest);
         if (!empty($results)) {
             $dataCompacted['extra']['overallLimitReached'] = (count($results) == $limit);
             $dataCompacted['extra']['timeLimitReached'] = false;
-            $limitsReached = $this->prepareLimitsReached($categories, $limitByCat);
+            $limitsReached = $this->prepareLimitsReached($categories, $limitByCat, $limit);
             $needAppendTags = (!empty($categories) && count(array_filter($categories, [$this,'isTagCategory'])) > 0);
             foreach ($results as $key => $page) {
                 if ($this->aclService->hasAccess("read", $page["tag"])) {
@@ -190,7 +233,7 @@ class AdvancedSearchService
                         'tags' => [],
                     ];
 
-                    $saveData = $this->appendCategoryInfo($data, $limitsReached);
+                    $saveData = $this->appendCategoryInfo($data, $limitsReached, $limitByCat);
                     $data['preRendered']= "";
 
                     if (!$dataCompacted['extra']['timeLimitReached']) {
@@ -207,6 +250,12 @@ class AdvancedSearchService
                                 $this->appendTags($data, $limitsReached, $categories);
                             }
                         }
+                    }
+                    if ($saveData &&
+                        !$dataCompacted['extra']['timeLimitReached'] &&
+                        $displaytext &&
+                        $forceDisplay) {
+                        $this->appendPreRendered($data, $searchText, $needles);
                     }
 
                     if ($saveData) {
@@ -518,7 +567,7 @@ class AdvancedSearchService
         return $this->dbService->escape($formattedValue);
     }
 
-    private function prepareLimitsReached($categories, $limitByCat): array
+    private function prepareLimitsReached($categories, $limitByCat, $limit): array
     {
         $limitsReached = [];
         if ($limitByCat > 0) {
@@ -544,16 +593,21 @@ class AdvancedSearchService
                     }
                 }
             }
+        } else {
+            $limitsReached = [
+                'all' => false,
+                'total' => $limit,
+                'autoFill' => false
+            ];
         }
         return $limitsReached;
     }
 
-    private function appendCategoryInfo(array &$data, array &$limitsReached): bool
+    private function appendCategoryInfo(array &$data, array &$limitsReached, $limitByCat): bool
     {
         $saveData = true;
         if (
             (
-                empty($limitsReached) ||
                 $limitsReached['autoFill'] ||
                 (
                     !empty($limitsReached['forms']) &&
@@ -572,7 +626,7 @@ class AdvancedSearchService
                 $data['type'] = 'entry';
                 $data['form'] =  strval(intval($entry['id_typeannonce']));
                 if ($limitsReached['autoFill'] && !array_key_exists($data['form'], $limitsReached['forms'])) {
-                    $limitsReached['forms'][$data['form']] = $limit;
+                    $limitsReached['forms'][$data['form']] = $limitByCat;
                 }
                 if (!empty($limitsReached['forms'][$data['form']])) {
                     if ($limitsReached['forms'][$data['form']] > 0) {
@@ -592,10 +646,12 @@ class AdvancedSearchService
                 ? 'logpage'
                 : 'page';
             if ($limitsReached['autoFill'] && !array_key_exists($data['type'], $limitsReached)) {
-                $limitsReached[$data['type']] = $limit;
+                $limitsReached[$data['type']] = $limitByCat;
             }
             if (!empty($limitsReached[$data['type']]) && $limitsReached[$data['type']] > 0) {
                 $limitsReached[$data['type']] = $limitsReached[$data['type']] - 1;
+            } elseif (!empty($limitsReached['total']) && $limitsReached['total'] > 0) {
+                $limitsReached['total'] = $limitsReached['total'] - 1;
             } else {
                 $saveData = false;
             }
@@ -625,7 +681,7 @@ class AdvancedSearchService
                     $tag = $this->getTagCategory($category);
 
                     if (!empty($limitsReached['tags'][$tag]) && $limitsReached['tags'][$tag] > 0) {
-                        $limitsReached['tags'][$tag] = ['tags'][$tag] - 1;
+                        $limitsReached['tags'][$tag] = $limitsReached['tags'][$tag] - 1;
                     }
                 }
             }
