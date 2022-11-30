@@ -252,10 +252,18 @@ class AdvancedSearchService
                         }
                     }
                     if ($saveData &&
-                        !$dataCompacted['extra']['timeLimitReached'] &&
+                        $dataCompacted['extra']['timeLimitReached'] &&
                         $displaytext &&
                         $forceDisplay) {
                         $this->appendPreRendered($data, $searchText, $needles);
+                    }
+
+                    if ((!$saveData ||
+                        $dataCompacted['extra']['timeLimitReached'])&&
+                        $needAppendTags &&
+                        $forceDisplay
+                    ) {
+                        $saveData = $this->appendTags($data, $limitsReached, $categories) && !$saveData;
                     }
 
                     if ($saveData) {
@@ -628,7 +636,7 @@ class AdvancedSearchService
                 if ($limitsReached['autoFill'] && !array_key_exists($data['form'], $limitsReached['forms'])) {
                     $limitsReached['forms'][$data['form']] = $limitByCat;
                 }
-                if (!empty($limitsReached['forms'][$data['form']])) {
+                if (isset($limitsReached['forms'][$data['form']])) {
                     if ($limitsReached['forms'][$data['form']] > 0) {
                         $limitsReached['forms'][$data['form']] = $limitsReached['forms'][$data['form']] - 1;
                     } else {
@@ -641,16 +649,17 @@ class AdvancedSearchService
             if (!empty($entry['bf_titre'])) {
                 $data['title'] = $entry['bf_titre'];
             }
-        } else {
+        } elseif (!(!$limitsReached['autoFill'] && isset($limitsReached['tags']) && !isset($limitsReached['forms']) &&
+                !isset($limitsReached['total']) && !isset($limitsReached['page']) && !isset($limitsReached['logpage']))) {
             $data['type'] = (substr($data['tag'], 0, strlen('LogDesActionsAdministratives')) == 'LogDesActionsAdministratives')
                 ? 'logpage'
                 : 'page';
             if ($limitsReached['autoFill'] && !array_key_exists($data['type'], $limitsReached)) {
                 $limitsReached[$data['type']] = $limitByCat;
             }
-            if (!empty($limitsReached[$data['type']]) && $limitsReached[$data['type']] > 0) {
+            if (isset($limitsReached[$data['type']]) && $limitsReached[$data['type']] > 0) {
                 $limitsReached[$data['type']] = $limitsReached[$data['type']] - 1;
-            } elseif (!empty($limitsReached['total']) && $limitsReached['total'] > 0) {
+            } elseif (isset($limitsReached['total']) && $limitsReached['total'] > 0) {
                 $limitsReached['total'] = $limitsReached['total'] - 1;
             } else {
                 $saveData = false;
@@ -660,8 +669,9 @@ class AdvancedSearchService
         return $saveData;
     }
 
-    private function appendTags(array &$data, array &$limitsReached, array $categories)
+    private function appendTags(array &$data, array &$limitsReached, array $categories): bool
     {
+        $saveData = false;
         $previousTag = $this->wiki->tag;
         $this->wiki->tag = $data["tag"];
         $tags = $this->tagsManager->getAll($data["tag"]);
@@ -679,13 +689,16 @@ class AdvancedSearchService
             foreach ($categories as $category) {
                 if ($this->isTagCategory($category)) {
                     $tag = $this->getTagCategory($category);
-
-                    if (!empty($limitsReached['tags'][$tag]) && $limitsReached['tags'][$tag] > 0) {
-                        $limitsReached['tags'][$tag] = $limitsReached['tags'][$tag] - 1;
+                    foreach ($data['tags'] as $dataTag) {
+                        if ($dataTag == $tag && !empty($limitsReached['tags'][$tag]) && $limitsReached['tags'][$tag] > 0) {
+                            $limitsReached['tags'][$tag] = $limitsReached['tags'][$tag] - 1;
+                            $saveData = false;
+                        }
                     }
                 }
             }
         }
+        return $saveData;
     }
 
     private function appendPreRendered(array &$data, $searchText, $needles)

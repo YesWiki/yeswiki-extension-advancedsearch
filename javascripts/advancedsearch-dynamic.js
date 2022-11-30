@@ -44,7 +44,7 @@ let appParams = {
     computed: {
         hasTagCategories: function(){
             return 'displayorder' in this.args &&
-                (Array.isArray(this.args.displayorder) ? this.args.displayorder : String(this.args.displayorder).split(',')).some((category)=>(category.slice(0,4) == 'tag:'));
+                (Array.isArray(this.args.displayorder) ? this.args.displayorder : String(this.args.displayorder).split(',')).some((category)=>(typeof category == 'string' && category.slice(0,4) == 'tag:'));
         }
     },
     methods: {
@@ -292,7 +292,7 @@ let appParams = {
         },
         updateTagsIfNeeded: function(data,extraParams){
             this.updateObjectIfNeeded(data,'tags','getTags');
-            let tagsCat = (Array.isArray(this.args.displayorder) ? this.args.displayorder : String(this.args.displayorder).split(',')).filter((category)=>(category.slice(0,4) == 'tag:'));
+            let tagsCat = (Array.isArray(this.args.displayorder) ? this.args.displayorder : String(this.args.displayorder).split(',')).filter((category)=>(typeof category == 'string' && category.slice(0,4) == 'tag:'));
             if (tagsCat.length > 0){
                 tagsCat.forEach((tagCat)=>{
                     this.searchTextFromApi({
