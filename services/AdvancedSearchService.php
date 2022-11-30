@@ -99,7 +99,7 @@ class AdvancedSearchService
             $this->searchSQL(
                 $data,
                 $sqlRequest,
-                ['limit'=>$limit,'limitByCat' => -1] + $sqlOptions
+                array_merge($sqlOptions, ['limit'=>$limit,'limitByCat' => -1])
             );
         } else {
             $onlyTags = $this->keepOnlyTagsCategories($options['categories']);
@@ -117,7 +117,7 @@ class AdvancedSearchService
                             $sqlRequest,
                             $selectedTags
                         ),
-                        ['limit'=>$options['limit'],'limitByCat' => -1] + $sqlOptions
+                        array_merge($sqlOptions, ['limit'=>$options['limit'],'limitByCat' => -1])
                     );
                 }
             } elseif (!empty($noTags)) {
@@ -158,7 +158,7 @@ class AdvancedSearchService
                     $limit = count($options['categories']) == 1
                         ? $options['limit']
                         : self::MAXIMUM_RESULTS_BY_QUERY+$options['limit'];
-                    $this->searchSQL($data, $sqlRequest, $sqlOptions+ ['limit'=>$limit]);
+                    $this->searchSQL($data, $sqlRequest, array_merge($sqlOptions, ['limit'=>$limit]));
                 }
             }
         }
