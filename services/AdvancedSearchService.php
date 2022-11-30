@@ -99,7 +99,7 @@ class AdvancedSearchService
             $this->searchSQL(
                 $data,
                 $sqlRequest,
-                array_merge($sqlOptions, ['limit'=>$limit,'limitByCat' => -1])
+                array_merge($sqlOptions, ['limit'=>$limit])
             );
         } else {
             $onlyTags = $this->keepOnlyTagsCategories($options['categories']);
