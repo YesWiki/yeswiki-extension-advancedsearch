@@ -50,10 +50,8 @@
               <h3 v-html="titles[keyAsType]"></h3>
               
               <ol>
-                <template v-for="(page) in results">
-                  <template v-if="isResultOfType(page,keyAsType)">
-                      {{ block('liWithNumber') }}
-                  </template>
+                <template v-for="(page) in keepOnlyMultipleOfLimit(results,keyAsType)">
+                  {{ block('liWithNumber') }}
                 </template>
               </ol>
               {% set keyAsTypeSyntax = 'keyAsType' %}

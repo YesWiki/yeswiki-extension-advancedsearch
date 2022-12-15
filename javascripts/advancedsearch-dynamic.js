@@ -68,6 +68,28 @@ let appParams = {
                 || (String(type).slice(0,4) == 'tag:' && result.tags.includes(String(type).slice(4)))
                 || result.type == type;
         },
+        keepOnlyMultipleOfLimit(results,keyAsType){
+            let filteredResults = {}
+            let nextFilteredResults = {}
+            const shouldKeepOnlyMultiples = this.showSeeMoreButton(results,keyAsType)
+            for (const key in results) {
+                let page = results[key]
+                if (this.isResultOfType(page,keyAsType)){
+                    nextFilteredResults[key] = results[key]
+                    if (shouldKeepOnlyMultiples && 
+                        Object.keys(nextFilteredResults).length === Number(this.args.limit)){
+                        for (const subKey in nextFilteredResults) {
+                            filteredResults[subKey] = nextFilteredResults[subKey]
+                        }
+                        nextFilteredResults = {}
+                    }
+                }
+            }
+            if (Object.keys(nextFilteredResults).length > 0 && Object.keys(filteredResults).length === 0){
+                filteredResults = {...filteredResults,...nextFilteredResults}
+            }
+            return filteredResults
+        },
         updateUrl: function(searchText){
             let url = window.location.toString();
             let rewriteMode = (
@@ -102,10 +124,8 @@ let appParams = {
         showSeeMoreButton: function(results, type){
             if (type == ''){
                 return (Object.keys(results).length > 0 && Object.keys(results).length % this.args.limit == 0);
-            } else if (this.doNotShowMoreFor.includes(type)) {
-                return false;
             } else {
-                return (this.filterResultsAccordingType(results, type).length % this.args.limit == 0);
+                return !this.doNotShowMoreFor.includes(String(type));
             }
         },
         moreResults: function(event) {
@@ -166,9 +186,10 @@ let appParams = {
                             ? Object.values(data.results)
                             : []
                         );
-                    if ('categories' in extraParams &&
-                        !extraParams.categories.includes(',') &&
-                        dataAsArray.length == 0 &&
+                    const isUpdatingOnlyOneCategory = ('categories' in extraParams &&
+                        !extraParams.categories.includes(','))
+                    if (isUpdatingOnlyOneCategory &&
+                        (dataAsArray.length == 0 || dataAsArray.length < params.limit) &&
                         !this.doNotShowMoreFor.includes(extraParams.categories)
                         ){
                         this.doNotShowMoreFor.push(extraParams.categories);
@@ -181,7 +202,7 @@ let appParams = {
                             this.updateRenderedIfNeeded(data,extraParams);
                         }
                     }
-                    if (searchTags && this.hasTagCategories){
+                    if (!isUpdatingOnlyOneCategory && searchTags && this.hasTagCategories){
                         this.updateTagsIfNeeded(data,extraParams);
                     }
                 })
