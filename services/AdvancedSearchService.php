@@ -618,60 +618,93 @@ class AdvancedSearchService
 
     private function appendCategoryInfo(array &$data, array &$limitsReached, $limitByCat): bool
     {
-        $saveData = true;
         if (
             (
-                $limitsReached['autoFill'] ||
-                (
-                    !empty($limitsReached['forms']) &&
-                    count(array_filter(
-                        $limitsReached['forms'],
-                        function ($i) {
-                            return $i > 0;
-                        }
-                    )) > 0
-                )
-            ) &&
-            $this->entryManager->isEntry($data['tag'])
-        ) {
-            $entry = $this->entryManager->getOne($data['tag']);
-            if (!empty($entry['id_typeannonce'])) {
-                $data['type'] = 'entry';
-                $data['form'] =  strval(intval($entry['id_typeannonce']));
-                if ($limitsReached['autoFill'] && !array_key_exists($data['form'], $limitsReached['forms'])) {
-                    $limitsReached['forms'][$data['form']] = $limitByCat;
-                }
-                if (isset($limitsReached['forms'][$data['form']])) {
-                    if ($limitsReached['forms'][$data['form']] > 0) {
-                        $limitsReached['forms'][$data['form']] = $limitsReached['forms'][$data['form']] - 1;
-                    } else {
-                        $saveData = false;
+                isset($limitsReached['total']) &&
+                $limitsReached['total'] > 0
+            ) ||
+            $limitsReached['autoFill'] ||
+            (
+                !empty($limitsReached['forms']) &&
+                count(array_filter(
+                    $limitsReached['forms'],
+                    function ($i) {
+                        return $i > 0;
                     }
-                }
+                )) > 0
+            )
+        ) {
+            // load entries only if needed
+            if ($this->isEntryThenAppendEntryData($data)) {
+                return $this->updateLimitsForEntry($limitsReached, $data, $limitByCat);
             } else {
-                $saveData = false;
+                return $this->updateLimitsForPage($limitsReached, $data, $limitByCat);
             }
-            if (!empty($entry['bf_titre'])) {
-                $data['title'] = $entry['bf_titre'];
-            }
-        } elseif (!(!$limitsReached['autoFill'] && isset($limitsReached['tags']) && !isset($limitsReached['forms']) &&
-                !isset($limitsReached['total']) && !isset($limitsReached['page']) && !isset($limitsReached['logpage']))) {
-            $data['type'] = (substr($data['tag'], 0, strlen('LogDesActionsAdministratives')) == 'LogDesActionsAdministratives')
-                ? 'logpage'
-                : 'page';
-            if ($limitsReached['autoFill'] && !array_key_exists($data['type'], $limitsReached)) {
-                $limitsReached[$data['type']] = $limitByCat;
-            }
-            if (isset($limitsReached[$data['type']]) && $limitsReached[$data['type']] > 0) {
-                $limitsReached[$data['type']] = $limitsReached[$data['type']] - 1;
-            } elseif (isset($limitsReached['total']) && $limitsReached['total'] > 0) {
-                $limitsReached['total'] = $limitsReached['total'] - 1;
-            } else {
-                $saveData = false;
-            }
+        } elseif (!$this->entryManager->isEntry($data['tag'])) {
+            return $this->updateLimitsForPage($limitsReached, $data, $limitByCat);
+        }
+        return false;
+    }
+
+    private function isEntryThenAppendEntryData(array &$data): bool
+    {
+        if (!$this->entryManager->isEntry($data['tag'])) {
+            return false;
         }
 
-        return $saveData;
+        $entry = $this->entryManager->getOne($data['tag']);
+        if (empty($entry['id_typeannonce']) ||
+            !is_scalar($entry['id_typeannonce'])
+            || empty(strval(intval($entry['id_typeannonce'])))) {
+            return false;
+        }
+
+
+        $data['type'] = 'entry';
+        $data['form'] =  strval(intval($entry['id_typeannonce']));
+
+        if (!empty($entry['bf_titre'])) {
+            $data['title'] = $entry['bf_titre'];
+        }
+
+        return true;
+    }
+
+    private function updateLimitsForEntry(array &$limitsReached, array $data, $limitByCat): bool
+    {
+        if (!empty($data['form'])) {
+            if ($limitsReached['autoFill'] && !array_key_exists($data['form'], $limitsReached['forms'])) {
+                $limitsReached['forms'][$data['form']] = $limitByCat;
+            }
+            if (isset($limitsReached['forms'][$data['form']])) {
+                if ($limitsReached['forms'][$data['form']] > 0) {
+                    $limitsReached['forms'][$data['form']] = $limitsReached['forms'][$data['form']] - 1;
+                } else {
+                    return false;
+                }
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private function updateLimitsForPage(array &$limitsReached, array &$data, $limitByCat): bool
+    {
+        $data['type'] = (substr($data['tag'], 0, strlen('LogDesActionsAdministratives')) == 'LogDesActionsAdministratives')
+            ? 'logpage'
+            : 'page';
+        if ($limitsReached['autoFill'] && !array_key_exists($data['type'], $limitsReached)) {
+            $limitsReached[$data['type']] = $limitByCat;
+        }
+        if (isset($limitsReached[$data['type']]) && $limitsReached[$data['type']] > 0) {
+            $limitsReached[$data['type']] = $limitsReached[$data['type']] - 1;
+        } elseif (isset($limitsReached['total']) && $limitsReached['total'] > 0) {
+            $limitsReached['total'] = $limitsReached['total'] - 1;
+        } else {
+            return false;
+        }
+        return true;
     }
 
     private function appendTags(array &$data)
