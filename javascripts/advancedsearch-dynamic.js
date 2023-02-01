@@ -29,8 +29,8 @@ let appParams = {
                 separator: "",
                 viewtype: "modal",
                 displaytext: ""
-            },            
-            doMContentLoaded: false,
+            },
+            categories: {},
             doNotShowMoreFor: [],
             ready: false,
             results: {},
@@ -350,9 +350,6 @@ let appParams = {
     mounted(){
         $(isVueJS3 ? this.$el.parentNode : this.$el).on('dblclick',function(e) {
           return false;
-        });
-        document.addEventListener('DOMContentLoaded', () => {
-            this.doMContentLoaded = true;
         });
         this.args = $(isVueJS3 ? this.$el.parentNode : this.$el).data("args");
         this.titles = $(isVueJS3 ? this.$el.parentNode : this.$el).data("titles");

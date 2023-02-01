@@ -29,7 +29,7 @@
 {{ include_javascript('tools/advancedsearch/javascripts/advancedsearch-dynamic.js', false, true) }}
 
 <div class="search-results" data-args="{{ args|json_encode }}" data-initialsearchtext="{{ searchText }}" data-titles-keys="{{formsTitles|keys|json_encode}}" data-titles="{{formsTitles|json_encode}}">
-  <div v-if="ready && searchText.length > 0" v-show="doMContentLoaded">
+  <div v-if="ready && searchText.length > 0">
     <template v-if="Object.keys(results).length == 0">
       <hr/>
       <b v-if="!updating">{{ _t('NO_SEARCH_RESULT') }}.</b>
@@ -84,5 +84,5 @@
     </p>
     <spinner-loader v-if="updating" class="overlay"></spinner-loader>
   </div>
-  <spinner-loader v-else-if="updating && doMContentLoaded" :height="400"></spinner-loader>
+  <spinner-loader v-else-if="updating" :height="400"></spinner-loader>
 </div>
