@@ -47,6 +47,7 @@
                     <a 
                       :href="wiki.url(page.tag+(args.viewtype == 'modal' ? '/iframe' : ''),{searchAnchor:searchText})+'#searchAnchor'"
                       :class="{['new-window']:(args.viewtype == 'newtab'),modalbox:(args.viewtype == 'modal')}"
+                      :target="(args.viewtype == 'newtab') ? '_blank' : null"
                       :data-iframe="args.viewtype == 'modal' ? '1' : false"
                       :data-size="args.viewtype == 'modal' ? 'modal-lg' : false"
                       :title="page.title ?? page.tag"
