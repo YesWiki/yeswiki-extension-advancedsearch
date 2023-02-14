@@ -252,14 +252,17 @@ let appParams = {
             let visible = this.extractVisiblesAccordingType(this.visible,type)
             if ('seeMore' in visible){
                 visible.seeMore = appAvancedSearchSeeMoreToUpdate
-                this.ready = false
-                this.ready = true
+                this.toggleDisplay()
             }
-            return await this.searchLong(this.searchText,signal,{excludes:previousTags,categories:type},true)
+            let params = {
+                excludes:previousTags
+            }
+            if (type != 'noCategory'){
+                params.categories = type
+            }
+            return await this.searchLong(this.searchText,signal,params,true)
                 .then(()=>{
-                    this.ready = false
-                    this.ready = true
-                    console.error('manage visible after seeMore')
+                    this.toggleDisplay()
                 })
         },
         async processNewText({text,signal}){
@@ -274,7 +277,14 @@ let appParams = {
             return await this.searchFast(text,signal)
                 .then(({forceTitlesAndRender})=>{
                     let previousTags = this.getAlreadyLoadedIds('')
-                    this.searchLong(text,signal,{excludes:previousTags},false,forceTitlesAndRender)
+                    if (this.args.template != "newtextsearch-by-category.twig" && previousTags.split(',').length == this.args.limit){
+                        if ('noCategory' in this.visible){
+                            this.visible.noCategory.seeMore = appAvancedSearchSeeMoreYes
+                            this.toggleDisplay()
+                        }
+                        return
+                    }
+                    return this.searchLong(text,signal,{excludes:previousTags},false,forceTitlesAndRender)
                 })
         },
         async searchFast(text,signal){
@@ -365,6 +375,10 @@ let appParams = {
                 throw error;
             }
         },
+        toggleDisplay(){
+            this.ready = false
+            this.ready = true
+        },
         async updateObjectIfNeeded(data,key,route,signal){
             if (Array.isArray(data.results)){
                 let entriesWithoutKey = data.results.filter((page)=>(!(key in page)||page[key].length == 0));
@@ -378,8 +392,7 @@ let appParams = {
                         .then(({data})=>{
                             this.updateResults(data.results,signal)
                             // toggle ready
-                            this.ready = false
-                            this.ready = true
+                            this.toggleDisplay()
                         })
                 }
             }
