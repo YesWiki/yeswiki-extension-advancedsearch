@@ -50,4 +50,5 @@ return [
 
    // templates/newtextsearch-by-category.twig
    'ADVANCEDSEARCH_SEE_MORE' => 'See more',
+   'ADVANCEDSEARCH_TO_UPDATE' => 'To be updated',
 ];

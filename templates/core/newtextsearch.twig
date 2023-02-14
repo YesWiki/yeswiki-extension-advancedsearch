@@ -39,7 +39,7 @@
       <b>{{ _t('SEARCH_RESULTS') }}[{{ "{{searchText}}" }}] :</b><br/>
       {% block results %}
         <ol>
-          <template v-for="(page) in results">
+          <template v-for="(page) in getVisiblesAccordingType(results,visible,'noCategory')">
             {% block liWithNumber %}
               <li>
                 <h4 class="h4-search-results">
@@ -61,14 +61,15 @@
             {% endblock %}
           </template>
         </ol>
-        {% set keyAsTypeSyntax = "''" %}
+        {% set keyAsTypeSyntax = "'noCategory'" %}
         {% block seeMore %}
           <div
-            v-if="showSeeMoreButton(results,{{ keyAsTypeSyntax }})"
+            v-if="showSeeMoreButton(visible,{{ keyAsTypeSyntax }})"
             class="btn btn-info btn-xs"
             :data-type="{{ keyAsTypeSyntax }}"
             @click="moreResults"
-            :disabled="updating"
+            :title="showSeeMoreButton(visible,{{ keyAsTypeSyntax }},'!=','Yes') ? {{ _t('ADVANCEDSEARCH_TO_UPDATE')|json_encode }} : null"
+            :disabled="updating || showSeeMoreButton(visible,{{ keyAsTypeSyntax }},'!=','Yes')"
             >
             {{ _t('ADVANCEDSEARCH_SEE_MORE') }}
           </div>

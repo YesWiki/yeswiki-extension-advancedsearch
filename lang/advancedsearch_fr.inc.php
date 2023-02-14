@@ -55,4 +55,5 @@ return [
 
    // templates/newtextsearch-by-category.twig
    'ADVANCEDSEARCH_SEE_MORE' => 'Voir plus',
+   'ADVANCEDSEARCH_TO_UPDATE' => 'En cours de mise à jour',
 ];
