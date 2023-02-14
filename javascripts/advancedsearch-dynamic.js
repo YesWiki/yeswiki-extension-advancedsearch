@@ -273,6 +273,9 @@ let appParams = {
             // reset results
             this.results = {}
             this.visible = {}
+            if (text.length == 0){
+                return true
+            }
             this.updateUrl(text)
             return await this.searchFast(text,signal)
                 .then(({forceTitlesAndRender})=>{
