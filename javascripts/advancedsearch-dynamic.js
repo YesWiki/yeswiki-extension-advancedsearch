@@ -540,7 +540,7 @@ let appParams = {
                         ids: []
                     }
                 }
-                this.udpateVisibleItem(extra,limit,forms[key],this.visible.forms[key],(limitsReached)=>('forms' in limitsReached && key in limitsReached.forms)? limitsReached.forms[key] : '',options)
+                this.udpateVisibleItem(extra,limit,forms[key],this.visible.forms[key],(limitsReached)=>('forms' in limitsReached && key in limitsReached.forms)? limitsReached.forms[key] : 'no',options)
             }
         },
         udpateVisibleItem(extra,limit,ids,baseObj,extractLimit,options){
@@ -588,7 +588,7 @@ let appParams = {
                     ids: []
                 }
             }
-            this.udpateVisibleItem(extra,limit,ids,this.visible[category],(limitsReached)=>limitsReached[category] || '',options)
+            this.udpateVisibleItem(extra,limit,ids,this.visible[category],(limitsReached)=>limitsReached[category] || 'no',options)
         },
         updateVisibleTags(limit,tagsToKeep = [],extra = {},options = {}){
             let {tags} = this.filterTagsOnResults(this.results,tagsToKeep)
@@ -602,7 +602,7 @@ let appParams = {
                         ids: []
                     }
                 }
-                this.udpateVisibleItem(extra,limit,tags[key],this.visible.tags[key],(limitsReached)=>('tags' in limitsReached && key in limitsReached.tags)? limitsReached.tags[key] : '',options)
+                this.udpateVisibleItem(extra,limit,tags[key],this.visible.tags[key],(limitsReached)=>('tags' in limitsReached && key in limitsReached.tags)? limitsReached.tags[key] : 'no',options)
             }
         },
         async updateRenderedIfNeeded(data,params,signal,modeFirstLong){
