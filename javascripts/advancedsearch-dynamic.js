@@ -328,7 +328,7 @@ let appParams = {
             return await this.getSearchViaApi(`search/${text}`,signal,copiedParams)
                 .then(({data,extra})=>{
                     this.updateResults(data,signal)
-                    this.updateVisible(extra,{displayAll:true,tagMode:options.tagMode,updateSeeMoreStatus:options.updateSeeMoreStatus})
+                    this.updateVisible(extra,{...options,...{displayAll:true}})
                     return {data,extra}
                 })
                 .then(({data,extra})=>{
@@ -489,7 +489,8 @@ let appParams = {
                 fast: false,
                 displayAll: false,
                 tagMode: false,
-                updateSeeMoreStatus: true
+                updateSeeMoreStatus: true,
+                modeFirstLong: false
             }
             options = {
                 ...defaultOptions,
@@ -540,7 +541,7 @@ let appParams = {
                         ids: []
                     }
                 }
-                this.udpateVisibleItem(extra,limit,forms[key],this.visible.forms[key],(limitsReached)=>('forms' in limitsReached && key in limitsReached.forms)? limitsReached.forms[key] : 'no',options)
+                this.udpateVisibleItem(extra,limit,forms[key],this.visible.forms[key],(limitsReached,modeFirstLong)=>('forms' in limitsReached && key in limitsReached.forms)? limitsReached.forms[key] : (modeFirstLong ? 'no' : ''),options)
             }
         },
         udpateVisibleItem(extra,limit,ids,baseObj,extractLimit,options){
@@ -548,7 +549,7 @@ let appParams = {
                 baseObj.ids = ids
             } else if (options.displayAll && (
                 !('limitsReached' in extra) ||
-                ('limitsReached' in extra && typeof extractLimit === 'function' && extractLimit(extra.limitsReached) == 'no')
+                ('limitsReached' in extra && typeof extractLimit === 'function' && extractLimit(extra.limitsReached,options.modeFirstLong) == 'no')
             )) {
                 baseObj.ids = ids
                 if (options.updateSeeMoreStatus){
@@ -558,7 +559,7 @@ let appParams = {
                 let nbToKeep = (limit === 0) ? 0 : Math.min(Math.max(Math.floor(ids.length / limit),1)*limit,ids.length)
                 baseObj.ids = ids.slice(0,nbToKeep)
                 if (options.updateSeeMoreStatus && 'limitsReached' in extra){
-                    let extract = (typeof extractLimit === 'function') ? extractLimit(extra.limitsReached): ''
+                    let extract = (typeof extractLimit === 'function') ? extractLimit(extra.limitsReached,options.modeFirstLong): ''
                     baseObj.seeMore = (limit <= 0) 
                         ? appAvancedSearchSeeMoreToUpdate
                         : (
@@ -588,7 +589,7 @@ let appParams = {
                     ids: []
                 }
             }
-            this.udpateVisibleItem(extra,limit,ids,this.visible[category],(limitsReached)=>limitsReached[category] || 'no',options)
+            this.udpateVisibleItem(extra,limit,ids,this.visible[category],(limitsReached,modeFirstLong)=>limitsReached[category] || (modeFirstLong ? 'no' : ''),options)
         },
         updateVisibleTags(limit,tagsToKeep = [],extra = {},options = {}){
             let {tags} = this.filterTagsOnResults(this.results,tagsToKeep)
@@ -602,7 +603,7 @@ let appParams = {
                         ids: []
                     }
                 }
-                this.udpateVisibleItem(extra,limit,tags[key],this.visible.tags[key],(limitsReached)=>('tags' in limitsReached && key in limitsReached.tags)? limitsReached.tags[key] : 'no',options)
+                this.udpateVisibleItem(extra,limit,tags[key],this.visible.tags[key],(limitsReached,modeFirstLong)=>('tags' in limitsReached && key in limitsReached.tags)? limitsReached.tags[key] : (modeFirstLong ? 'no' : ''),options)
             }
         },
         async updateRenderedIfNeeded(data,params,signal,modeFirstLong){
