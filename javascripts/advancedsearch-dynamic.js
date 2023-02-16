@@ -60,38 +60,38 @@ let appParams = {
                 this.updateVisible()
                 if (modifiedParams.limitByCat){
                     if ('page' in this.visible){
-                        modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[pages]',this.visible.page,modeSeeMore,modeFirstLong)
+                        modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[pages]',this.filterResultsAccordingType(this.results,'page'),this.visible.page,modeSeeMore,modeFirstLong)
                     }
                     if ('logpage' in this.visible){
-                        modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[logpages]',this.visible.logpage,modeSeeMore,modeFirstLong)
+                        modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[logpages]',this.filterResultsAccordingType(this.results,'logpage'),this.visible.logpage,modeSeeMore,modeFirstLong)
                     }
                     if ('forms' in this.visible){
                         Object.keys(this.visible.forms).forEach((formId)=>{
-                            modifiedParams = this.appendANeededLimitInParams(modifiedParams,`neededByCat[entries][${formId}]`,this.visible.forms[formId],modeSeeMore,modeFirstLong)
+                            modifiedParams = this.appendANeededLimitInParams(modifiedParams,`neededByCat[entries][${formId}]`,this.filterResultsAccordingType(this.results,formId),this.visible.forms[formId],modeSeeMore,modeFirstLong)
                         })
                     }
                     if ('tags' in this.visible){
                         Object.keys(this.visible.tags).forEach((tag)=>{
-                            modifiedParams = this.appendANeededLimitInParams(modifiedParams,`neededByCat[tags][${tag}]`,this.visible.tags[tag],modeSeeMore,modeFirstLong)
+                            modifiedParams = this.appendANeededLimitInParams(modifiedParams,`neededByCat[tags][${tag}]`,this.filterResultsAccordingType(this.results,`tag:${tag}`),this.visible.tags[tag],modeSeeMore,modeFirstLong)
                         })
                     }
                 } else {
-                    modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[noCategory]',this.visible.noCategory,modeSeeMore,modeFirstLong)
+                    modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[noCategory]',Object.values(this.results),this.visible.noCategory,modeSeeMore,modeFirstLong)
                 }
             }
             return modifiedParams
         },
-        appendANeededLimitInParams(params,name,data,modeSeeMore,modeFirstLong){
+        appendANeededLimitInParams(params,name,originData,data,modeSeeMore,modeFirstLong){
             return {
                 ...params,
                 ...{
                     [name]: (data.seeMore == appAvancedSearchSeeMoreNo || (
                         !modeSeeMore &&
-                        data.seeMore == appAvancedSearchSeeMoreYes && data.ids.length > 0 
-                        && (data.ids.length % this.args.limit) == 0
+                        data.seeMore == appAvancedSearchSeeMoreYes && originData.length > 0 
+                        && (originData.length % this.args.limit) == 0
                     ))
                         ? (modeFirstLong ? 1 : 0)
-                        : this.args.limit - (data.ids.length % this.args.limit)
+                        : this.args.limit - (originData.length % this.args.limit)
                 }
             }
         },

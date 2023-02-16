@@ -267,7 +267,7 @@ class AdvancedSearchService
             'limits' => $limits,
             'onlyTags' => $onlyTags
         ) = $sqlOptions;
-        $sqlRequest = $this->addSQLLimit($sqlRequest, $limit+1);
+        $sqlRequest = $this->addSQLLimit($sqlRequest, $limit+(($limit < self::MAXIMUM_RESULTS_BY_QUERY && $limit > 1)?$limit:1));
         $results = $this->dbService->loadAll($sqlRequest);
         if (!empty($results)) {
             $dataCompacted['extra']['timeLimitReached'] = false;
@@ -287,8 +287,9 @@ class AdvancedSearchService
                         if (microtime(true) - $startTime > 2.5) {
                             $dataCompacted['extra']['timeLimitReached'] = true;
                         }
-                        
-                        if ($onlyTags || $forceDisplay || (!$dataCompacted['extra']['timeLimitReached']) && $saveData) {
+                    }
+                    if ($saveData) {
+                        if ($onlyTags || $forceDisplay || !$dataCompacted['extra']['timeLimitReached']) {
                             if ($displaytext) {
                                 $this->appendPreRendered($data, $searchText, $needles);
                             } elseif ($data['type'] != 'entry') {
@@ -298,12 +299,6 @@ class AdvancedSearchService
                                 $this->appendTags($data);
                             }
                         }
-                    }
-                    if ($saveData &&
-                        $dataCompacted['extra']['timeLimitReached'] &&
-                        $displaytext &&
-                        $forceDisplay) {
-                        $this->appendPreRendered($data, $searchText, $needles);
                     }
 
                     if ($saveData || ($onlyTags && $forceDisplay)) {
@@ -797,7 +792,7 @@ class AdvancedSearchService
                         );
                     }
                 } catch (Throwable $th) {
-                    // do nthing;
+                    // do nothing;
                 }
                 $this->appendTitleIfNeeded($data, $rawPage);
             }

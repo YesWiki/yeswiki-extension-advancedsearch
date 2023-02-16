@@ -55,6 +55,6 @@ return [
 
    // templates/newtextsearch-by-category.twig
    'ADVANCEDSEARCH_SEE_MORE' => 'Voir plus',
-   'ADVANCEDSEARCH_TO_UPDATE' => 'En cours de mise à jour',
+   'ADVANCEDSEARCH_TO_UPDATE' => 'Résultats en cours de chargement',
    'ADVANCEDSEARCH_HAS_ERROR' => 'Une erreur est survenue. Il se pourrait que les résultats ne soient pas corrects.',
 ];
