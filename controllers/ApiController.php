@@ -63,19 +63,51 @@ class ApiController extends YesWikiController
             $results = [];
         } else {
             $advancedSearchService = $this->getService(AdvancedSearchService::class);
-            $results = $advancedSearchService->getSearch($text, [
-                'displaytext' => filter_input(INPUT_GET, 'displaytext', FILTER_VALIDATE_BOOL),
-                'limitByCat' => filter_input(INPUT_GET, 'limitByCat', FILTER_VALIDATE_BOOL),
-                'forceDisplay' => filter_input(INPUT_GET, 'forceDisplay', FILTER_VALIDATE_BOOL),
-                'limit' => filter_input(INPUT_GET, 'limit', FILTER_VALIDATE_INT, [
-                    'min_range' => 0,
-                    'default' => 0
+            $results = $advancedSearchService->getSearch(
+                $text,
+                $this->filterInput(INPUT_GET, 'limit', FILTER_VALIDATE_INT, [
+                    'default' => 0,
+                    'min_range' => 0
                 ]),
-                'categories' => filter_input(INPUT_GET, 'categories', FILTER_UNSAFE_RAW),
-                'excludes' => filter_input(INPUT_GET, 'excludes', FILTER_UNSAFE_RAW),
-                'onlytags' => filter_input(INPUT_GET, 'onlytags', FILTER_UNSAFE_RAW)
-            ]);
+                $this->filterInput(INPUT_GET, 'limitByCat', FILTER_VALIDATE_BOOL, [
+                    'default' => false
+                ]),
+                isset($_GET['neededByCat']) && is_array($_GET['neededByCat']) ? $_GET['neededByCat'] : [],
+                $this->filterInput(INPUT_GET, 'displaytext', FILTER_VALIDATE_BOOL, [
+                    'default' => false
+                ]),
+                $this->filterInput(INPUT_GET, 'forceDisplay', FILTER_VALIDATE_BOOL, [
+                    'default' => false
+                ]),
+                strval($this->filterInput(INPUT_GET, 'categories', FILTER_UNSAFE_RAW, [
+                    'default' => ''
+                ])),
+                strval($this->filterInput(INPUT_GET, 'excludes', FILTER_UNSAFE_RAW, [
+                    'default' => ''
+                ])),
+                strval($this->filterInput(INPUT_GET, 'onlytags', FILTER_UNSAFE_RAW, [
+                    'default' => ''
+                ])),
+                $this->filterInput(INPUT_GET, 'fast', FILTER_VALIDATE_BOOL, [
+                    'default' => false
+                ]),
+                isset($_GET['keepOnlyTags']) && is_array($_GET['keepOnlyTags']) ? $_GET['keepOnlyTags'] : []
+            );
         }
         return new ApiResponse($results);
+    }
+
+    protected function filterInput(
+        int $type,
+        string $var_name,
+        int $filter,
+        array $options = []
+    )
+    {
+        $value = filter_input($type, $var_name, $filter, $options);
+        if (in_array($value,[false,null],true) && array_key_exists('default',$options)){
+            $value = $options['default'];
+        }
+        return $value;
     }
 }

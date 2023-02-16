@@ -34,7 +34,7 @@
   {# show by forms or pages#}
   <div class="newtextsearch-by-category-container">
     <template v-for="(keyAsType) in titlesKeys">
-      <template v-if="filterResultsAccordingType(results,keyAsType).length > 0">
+      <template v-if="getVisiblesAccordingType(results,visible,keyAsType).length > 0">
         <div class="newtextsearch-by-category-group {{ 
                 args.nbcols == 3 
                 ? 'col-md-4' 
@@ -50,7 +50,7 @@
               <h3 v-html="titles[keyAsType]"></h3>
               
               <ol>
-                <template v-for="(page) in keepOnlyMultipleOfLimit(results,keyAsType)">
+                <template v-for="(page) in getVisiblesAccordingType(results,visible,keyAsType)">
                   {{ block('liWithNumber') }}
                 </template>
               </ol>

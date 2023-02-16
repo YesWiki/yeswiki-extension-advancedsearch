@@ -29,7 +29,7 @@
 {{ include_javascript('tools/advancedsearch/javascripts/advancedsearch-dynamic.js', false, true) }}
 
 <div class="search-results" data-args="{{ args|json_encode }}" data-initialsearchtext="{{ searchText }}" data-titles-keys="{{formsTitles|keys|json_encode}}" data-titles="{{formsTitles|json_encode}}">
-  <div v-if="ready && searchText.length > 0" v-show="doMContentLoaded">
+  <div v-if="ready && searchText.length > 0">
     <template v-if="Object.keys(results).length == 0">
       <hr/>
       <b v-if="!updating">{{ _t('NO_SEARCH_RESULT') }}.</b>
@@ -39,7 +39,7 @@
       <b>{{ _t('SEARCH_RESULTS') }}[{{ "{{searchText}}" }}] :</b><br/>
       {% block results %}
         <ol>
-          <template v-for="(page) in results">
+          <template v-for="(page) in getVisiblesAccordingType(results,visible,'noCategory')">
             {% block liWithNumber %}
               <li>
                 <h4 class="h4-search-results">
@@ -61,14 +61,15 @@
             {% endblock %}
           </template>
         </ol>
-        {% set keyAsTypeSyntax = "''" %}
+        {% set keyAsTypeSyntax = "'noCategory'" %}
         {% block seeMore %}
           <div
-            v-if="showSeeMoreButton(results,{{ keyAsTypeSyntax }})"
+            v-if="showSeeMoreButton(visible,{{ keyAsTypeSyntax }})"
             class="btn btn-info btn-xs"
             :data-type="{{ keyAsTypeSyntax }}"
             @click="moreResults"
-            :disabled="updating"
+            :title="showSeeMoreButton(visible,{{ keyAsTypeSyntax }},'!=','Yes') ? {{ _t('ADVANCEDSEARCH_TO_UPDATE')|json_encode }} : null"
+            :disabled="updating || showSeeMoreButton(visible,{{ keyAsTypeSyntax }},'!=','Yes')"
             >
             {{ _t('ADVANCEDSEARCH_SEE_MORE') }}
           </div>
@@ -82,7 +83,8 @@
         {{ block('link') }}
       </template>
     </p>
+    <div v-show="hasError" class="alert alert-warning" style="display:none">{{ _t('ADVANCEDSEARCH_HAS_ERROR') }}</div>
     <spinner-loader v-if="updating" class="overlay"></spinner-loader>
   </div>
-  <spinner-loader v-else-if="updating && doMContentLoaded" :height="400"></spinner-loader>
+  <spinner-loader v-else-if="updating" :height="400"></spinner-loader>
 </div>

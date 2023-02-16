@@ -11,6 +11,7 @@
 
 namespace YesWiki\Advancedsearch\Service;
 
+use Throwable;
 use YesWiki\Bazar\Controller\EntryController;
 use YesWiki\Bazar\Service\EntryManager;
 use YesWiki\Bazar\Service\FormManager;
@@ -61,49 +62,76 @@ class AdvancedSearchService
         $this->wiki = $wiki;
     }
 
-    public function getSearch(string $searchText, array $options = []): array
+    public function getSearch(
+        string $text,
+        int $limit,
+        bool $limitByCat = false,
+        array $neededByCat = [],
+        bool $displayText = false,
+        bool $forceDisplay = false,
+        string $categoriesComaSeparated = '',
+        string $excludesComaSeperated = '',
+        string $onlytagsComaSeparated = '',
+        bool $fastMode = false,
+        array $keepOnlyTags = []): array
     {
-        $options['displaytext'] = (isset($options['displaytext']) && is_bool($options['displaytext'])) ? $options['displaytext'] : false;
-        $options['forceDisplay'] = (isset($options['forceDisplay']) && is_bool($options['forceDisplay'])) ? $options['forceDisplay'] : false;
-        $options['limit'] = (isset($options['limit']) && is_int($options['limit']) && $options['limit'] > 0) ? $options['limit'] : 0;
-        $options['limitByCat'] = (isset($options['limitByCat']) && is_bool($options['limitByCat'])) ? $options['limitByCat'] : false;
-        $options['categories'] = (!empty($options['categories']) && is_string($options['categories'])) ? array_map('strval', explode(',', $options['categories'])) : [];
-        $options['excludes'] = (!empty($options['excludes']) && is_string($options['excludes'])) ? explode(',', $options['excludes']) : [];
-        $options['onlytags'] = (!empty($options['onlytags']) && is_string($options['onlytags'])) ? explode(',', $options['onlytags']) : [];
+        $limits = $this->sanitizeLimits($limit,$limitByCat,$neededByCat);
+        
+        $categories = empty($categoriesComaSeparated)
+            ? []
+            : array_map('strval', explode(',', $categoriesComaSeparated));
+        $excludes = empty($excludesComaSeperated) ? [] : explode(',', $excludesComaSeperated);
+        $onlytags = empty($onlytagsComaSeparated) ? [] : explode(',', $onlytagsComaSeparated);
         $startTime = microtime(true);
 
-        list('requestfull' => $sqlRequest, 'needles' => $needles) = $this->getSqlRequest($searchText);
+        list('requestfull' => $sqlRequest, 'needles' => $needles) = $this->getSqlRequest($text, !$fastMode);
         $data = [
             'results' => [],
             'extra' => []
         ];
         $sqlOptions = [
-            'displaytext' => $options['displaytext'],
-            'searchText' => $searchText,
+            'displaytext' => $displayText,
+            'searchText' => $text,
             'needles' => $needles,
             'startTime' => $startTime,
-            'limitByCat' => $options['limitByCat'] ? $options['limit'] : -1,
-            'categories' => $options['categories'],
-            'forceDisplay' => $options['forceDisplay'],
+            'limitByCat' => $limitByCat,
+            'categories' => $categories,
+            'forceDisplay' => $forceDisplay,
+            'limits' => $limits,
+            'onlyTags' => false
         ];
-        $this->addExcludesTags($sqlRequest, $options['excludes']);
-        $this->addOnlyTagsNames($sqlRequest, $options['onlytags']);
-        if (empty($options['categories'])) {
-            if ($options['limitByCat']) {
+        $this->addExcludesTags($sqlRequest, $excludes);
+        $this->addOnlyTagsNames($sqlRequest, $onlytags);
+        if (!empty($keepOnlyTags)){
+            $this->addKeepOnlyTags($sqlRequest, $keepOnlyTags);
+            $this->searchSQL(
+                $data,
+                $sqlRequest,
+                array_merge($sqlOptions, [
+                    'limit'=>count($keepOnlyTags)+1,
+                    'categories'=>'',
+                    'limitByCat'=>false,
+                    'limits' => [
+                        'noCategory' => count($keepOnlyTags)+1
+                    ]
+                ])
+            );
+        } elseif (empty($categories)) {
+            if ($limitByCat) {
                 // remove log pages (default)
                 $sqlRequest = $this->removeLogPageFilter($sqlRequest);
-                $limit = self::MAXIMUM_RESULTS_BY_QUERY+$options['limit'];
+                $limitLocal = self::MAXIMUM_RESULTS_BY_QUERY+$limit;
             } else {
-                $limit = $options['limit'];
+                $limitLocal = $limits['noCategory'];
             }
             $this->searchSQL(
                 $data,
                 $sqlRequest,
-                array_merge($sqlOptions, ['limit'=>$limit])
+                array_merge($sqlOptions, ['limit'=>$limitLocal])
             );
         } else {
-            $onlyTags = $this->keepOnlyTagsCategories($options['categories']);
-            $noTags = $this->removeTagsCategories($options['categories']);
+            $onlyTags = $this->keepOnlyTagsCategories($categories);
+            $noTags = $this->removeTagsCategories($categories);
             if (empty($noTags) && !empty($onlyTags)) {
                 foreach ($onlyTags as $tagCat) {
                     $tag = $this->getTagCategory($tagCat);
@@ -117,7 +145,7 @@ class AdvancedSearchService
                             $sqlRequest,
                             $selectedTags
                         ),
-                        array_merge($sqlOptions, ['limit'=>$options['limit'],'limitByCat' => -1])
+                        array_merge($sqlOptions, ['limit'=>$limits['tags']['default'],'limitByCat' => false,'onlyTags'=>true])
                     );
                 }
             } elseif (!empty($noTags)) {
@@ -155,9 +183,9 @@ class AdvancedSearchService
                     } else {
                         $sqlRequest = $this->appendFormsFilter($sqlRequest, $forms, false);
                     }
-                    $limit = count($options['categories']) == 1
-                        ? $options['limit']
-                        : self::MAXIMUM_RESULTS_BY_QUERY+$options['limit'];
+                    $limit = count($categories) <= 1
+                        ? $limit
+                        : (count($categories)+1)*max(5,$limit);
                     $this->searchSQL($data, $sqlRequest, array_merge($sqlOptions, ['limit'=>$limit]));
                 }
             }
@@ -225,7 +253,7 @@ class AdvancedSearchService
         });
     }
 
-    private function searchSQL(array &$dataCompacted, string $sqlRequest, array $options)
+    private function searchSQL(array &$dataCompacted, string $sqlRequest, array $sqlOptions)
     {
         list(
             'displaytext'=>$displaytext,
@@ -235,14 +263,15 @@ class AdvancedSearchService
             'limitByCat' => $limitByCat,
             'categories' => $categories,
             'startTime' => $startTime,
-            'forceDisplay' => $forceDisplay
-        ) = $options;
-        $sqlRequest = $this->addSQLLimit($sqlRequest, $limit);
+            'forceDisplay' => $forceDisplay,
+            'limits' => $limits,
+            'onlyTags' => $onlyTags
+        ) = $sqlOptions;
+        $sqlRequest = $this->addSQLLimit($sqlRequest, $limit+1);
         $results = $this->dbService->loadAll($sqlRequest);
         if (!empty($results)) {
-            $dataCompacted['extra']['overallLimitReached'] = (count($results) == $limit);
             $dataCompacted['extra']['timeLimitReached'] = false;
-            $limitsReached = $this->prepareLimitsReached($categories, $limitByCat, $limit);
+            $limitsReached = $this->prepareLimitsReached($categories, $limitByCat, $limit, $limits);
             $needAppendTags = (!empty($categories) && count(array_filter($categories, [$this,'isTagCategory'])) > 0);
             foreach ($results as $key => $page) {
                 if ($this->aclService->hasAccess("read", $page["tag"])) {
@@ -251,13 +280,15 @@ class AdvancedSearchService
                         'tags' => [],
                     ];
 
-                    $saveData = $this->appendCategoryInfo($data, $limitsReached, $limitByCat);
+                    $saveData = $this->appendCategoryInfo($data, $limitsReached, $limits);
                     $data['preRendered']= "";
-
+                    
                     if (!$dataCompacted['extra']['timeLimitReached']) {
                         if (microtime(true) - $startTime > 2.5) {
                             $dataCompacted['extra']['timeLimitReached'] = true;
-                        } elseif ($saveData) {
+                        }
+                        
+                        if ($onlyTags || $forceDisplay || (!$dataCompacted['extra']['timeLimitReached']) && $saveData) {
                             if ($displaytext) {
                                 $this->appendPreRendered($data, $searchText, $needles);
                             } elseif ($data['type'] != 'entry') {
@@ -275,7 +306,7 @@ class AdvancedSearchService
                         $this->appendPreRendered($data, $searchText, $needles);
                     }
 
-                    if ($saveData) {
+                    if ($saveData || ($onlyTags && $forceDisplay)) {
                         $dataCompacted['results'][] = $data;
                     }
 
@@ -285,7 +316,7 @@ class AdvancedSearchService
                     }
                 }
             }
-            $this->saveLimitsReachedInExtra($dataCompacted, $limitsReached);
+            $this->saveLimitsReachedInExtra($dataCompacted, $limitsReached,$limits);
         }
     }
 
@@ -353,11 +384,11 @@ class AdvancedSearchService
         SQL;
     }
 
-    private function getSqlRequest(string $searchText): array
+    private function getSqlRequest(string $searchText, bool $searchInListInEntries = false): array
     {
         // extract needles with values in list
         // find in values for entries
-        $forms = $this->formManager->getAll();
+        $forms = $searchInListInEntries ? $this->formManager->getAll() : [];
         $needles = $this->searchManager->searchWithLists($searchText, $forms);
         if (!empty($needles)) {
             $searches = [];
@@ -374,7 +405,7 @@ class AdvancedSearchService
                 $search = str_replace('_', '\\_', $search);
                 $currentSearches[] = 'body REGEXP \''.$search.'\'';
 
-                if (!empty($results)) {
+                if ($searchInListInEntries && !empty($results)) {
                     // add search in list
                     // $results is an array not empty only if list
                     foreach ($results as $result) {
@@ -396,10 +427,11 @@ class AdvancedSearchService
             $requeteSQL = '('.implode(' AND ', $searches).')';
         }
 
-        $requestfull = "SELECT DISTINCT tag FROM {$this->dbService->prefixTable('pages')} ".
-            "WHERE latest = \"Y\" {$this->aclService->updateRequestWithACL()} ".
-            "AND $requeteSQL";
-
+        $requestfull = <<<SQL
+        SELECT DISTINCT `tag` FROM {$this->dbService->prefixTable('pages')}
+            WHERE `latest` = "Y"
+            AND $requeteSQL
+        SQL;
         return compact('requestfull', 'needles');
     }
 
@@ -461,6 +493,19 @@ class AdvancedSearchService
                 return "'{$this->dbService->escape(trim($tag))}'";
             }, $filteredExcludes));
             $sqlRequest .= " AND `tag` NOT IN ($tags)";
+        }
+    }
+
+    private function addKeepOnlyTags(string &$sqlRequest, array $tags)
+    {
+        $filtered = array_filter($tags, function ($tag) {
+            return is_string($tag) && !empty(trim($tag));
+        });
+        if (!empty($filtered)) {
+            $tagsSQL = implode(',', array_map(function ($tag) {
+                return "'{$this->dbService->escape(trim($tag))}'";
+            }, $filtered));
+            $sqlRequest .= " AND `tag` IN ($tagsSQL)";
         }
     }
 
@@ -584,44 +629,47 @@ class AdvancedSearchService
         return $this->dbService->escape($formattedValue);
     }
 
-    private function prepareLimitsReached($categories, $limitByCat, $limit): array
+    private function prepareLimitsReached($categories, $limitByCat, $limit, $limits): array
     {
         $limitsReached = [];
-        if ($limitByCat > 0) {
+        if ($limitByCat) {
             $limitsReached = [
                 'all' => false,
                 'forms' => [],
                 'autoFill' => empty($categories)
             ];
             if (!$limitsReached['autoFill']) {
+                $limitsReached['page'] = $limits['pages'];
+                $limitsReached['logpage'] = $limits['logpages'];
                 foreach ($categories as $category) {
                     if (strval(intval($category)) == $category) {
                         if (intval($category) > 0 && !in_array($category, array_keys($limitsReached['forms']))) {
-                            $limitsReached['forms'][$category] = $limitByCat;
+                            $limitsReached['forms'][$category] = 
+                                $limits['entries']['byForm'][strval($category)] ??
+                                $limits['entries']['default'];
                         }
-                    } elseif ($category == "page") {
-                        $limitsReached['page'] = $limitByCat;
-                    } elseif ($category == "logpage") {
-                        $limitsReached['logpage'] = $limitByCat;
                     }
+                }
+                foreach($limits['entries']['byForm'] as $formId => $limit){
+                    $limitsReached['forms'][strval($formId)] = $limit;
                 }
             }
         } else {
             $limitsReached = [
                 'all' => false,
-                'total' => $limit,
+                'noCategory' => $limits['noCategory'] ?? $limit,
                 'autoFill' => false
             ];
         }
         return $limitsReached;
     }
 
-    private function appendCategoryInfo(array &$data, array &$limitsReached, $limitByCat): bool
+    private function appendCategoryInfo(array &$data, array &$limitsReached, $limits): bool
     {
         if (
             (
-                isset($limitsReached['total']) &&
-                $limitsReached['total'] > 0
+                isset($limitsReached['noCategory']) &&
+                $limitsReached['noCategory'] >= 0
             ) ||
             $limitsReached['autoFill'] ||
             (
@@ -635,13 +683,13 @@ class AdvancedSearchService
             )
         ) {
             // load entries only if needed
-            if ($this->isEntryThenAppendEntryData($data)) {
-                return $this->updateLimitsForEntry($limitsReached, $data, $limitByCat);
+            if (!isset($limitsReached['noCategory']) && $this->isEntryThenAppendEntryData($data)) {
+                return $this->updateLimitsForEntry($limitsReached, $data, $limits);
             } else {
-                return $this->updateLimitsForPage($limitsReached, $data, $limitByCat);
+                return $this->updateLimitsForPage($limitsReached, $data, $limits);
             }
-        } elseif (!$this->entryManager->isEntry($data['tag'])) {
-            return $this->updateLimitsForPage($limitsReached, $data, $limitByCat);
+        } elseif (!isset($limitsReached['noCategory']) && !$this->entryManager->isEntry($data['tag'])) {
+            return $this->updateLimitsForPage($limitsReached, $data, $limits);
         }
         return false;
     }
@@ -670,16 +718,15 @@ class AdvancedSearchService
         return true;
     }
 
-    private function updateLimitsForEntry(array &$limitsReached, array $data, $limitByCat): bool
+    private function updateLimitsForEntry(array &$limitsReached, array $data, $limits): bool
     {
         if (!empty($data['form'])) {
             if ($limitsReached['autoFill'] && !array_key_exists($data['form'], $limitsReached['forms'])) {
-                $limitsReached['forms'][$data['form']] = $limitByCat;
+                $limitsReached['forms'][$data['form']] = $limits['entries']['default'];
             }
             if (isset($limitsReached['forms'][$data['form']])) {
-                if ($limitsReached['forms'][$data['form']] > 0) {
-                    $limitsReached['forms'][$data['form']] = $limitsReached['forms'][$data['form']] - 1;
-                } else {
+                $limitsReached['forms'][$data['form']] = $limitsReached['forms'][$data['form']] - 1;
+                if ($limitsReached['forms'][$data['form']] < 0) {
                     return false;
                 }
             }
@@ -689,18 +736,24 @@ class AdvancedSearchService
         }
     }
 
-    private function updateLimitsForPage(array &$limitsReached, array &$data, $limitByCat): bool
+    private function updateLimitsForPage(array &$limitsReached, array &$data, $limits): bool
     {
         $data['type'] = (substr($data['tag'], 0, strlen('LogDesActionsAdministratives')) == 'LogDesActionsAdministratives')
             ? 'logpage'
             : 'page';
         if ($limitsReached['autoFill'] && !array_key_exists($data['type'], $limitsReached)) {
-            $limitsReached[$data['type']] = $limitByCat;
+            $limitsReached[$data['type']] = $data['type'] == 'logpage' ? $limits['logpages'] : $limits['pages'];
         }
-        if (isset($limitsReached[$data['type']]) && $limitsReached[$data['type']] > 0) {
+        if (isset($limitsReached[$data['type']])){
             $limitsReached[$data['type']] = $limitsReached[$data['type']] - 1;
-        } elseif (isset($limitsReached['total']) && $limitsReached['total'] > 0) {
-            $limitsReached['total'] = $limitsReached['total'] - 1;
+            if ($limitsReached[$data['type']] < 0){
+                return false;
+            }
+        } elseif (isset($limitsReached['noCategory'])) {
+            $limitsReached['noCategory'] = $limitsReached['noCategory'] - 1;
+            if ($limitsReached['noCategory'] < 0){
+                return false;
+            }
         } else {
             return false;
         }
@@ -734,11 +787,18 @@ class AdvancedSearchService
         } else {
             $rawPage = $this->pageManager->getOne($data["tag"]);
             if (!empty($rawPage)) {
-                $data['preRendered'] = $this->displayNewSearchResult(
-                    $this->wiki->Format($rawPage, 'wakka', $data["tag"]),
-                    $searchText,
-                    $needles
-                );
+                try {
+                    $renderedContent = $this->wiki->Format($rawPage['body'], 'wakka', $data["tag"]);
+                    if (!empty($renderedContent)){
+                        $data['preRendered'] = $this->displayNewSearchResult(
+                            $this->wiki->Format($renderedContent, 'wakka', $data["tag"]),
+                            $searchText,
+                            $needles
+                        );
+                    }
+                } catch (Throwable $th) {
+                    // do nthing;
+                }
                 $this->appendTitleIfNeeded($data, $rawPage);
             }
         }
@@ -771,13 +831,13 @@ class AdvancedSearchService
                     if (is_array($v)) {
                         if (!empty($v)) {
                             foreach ($v as $subK => $subV) {
-                                if ($subV > 0) {
+                                if ($subV >= 0) {
                                     $someNotReached = true;
                                     break;
                                 }
                             }
                         }
-                    } elseif ($v > 0) {
+                    } elseif ($v >= 0) {
                         $someNotReached = true;
                     }
                 }
@@ -786,7 +846,7 @@ class AdvancedSearchService
         }
     }
 
-    private function saveLimitsReachedInExtra(array &$dataCompacted, array &$limitsReached)
+    private function saveLimitsReachedInExtra(array &$dataCompacted, array &$limitsReached, array $limits)
     {
         $dataCompacted['extra']['limitsReached'] = [];
         foreach ($limitsReached as $k => $v) {
@@ -795,13 +855,72 @@ class AdvancedSearchService
                     if (!empty($v)) {
                         $dataCompacted['extra']['limitsReached'][$k] = [];
                         foreach ($v as $subK => $subV) {
-                            $dataCompacted['extra']['limitsReached'][$k][strval($subK)] = ($subV < 1);
+                            $dataCompacted['extra']['limitsReached'][$k][strval($subK)] = ($subV > 1) ? 'no' :(
+                                ($subV == 1 && $limits[$k][strval($subK)] != 1)
+                                ? 'toConfirme'
+                                : 'yes'
+                            );
                         }
                     }
                 } else {
-                    $dataCompacted['extra']['limitsReached'][$k] = ($v < 1);
+                    $dataCompacted['extra']['limitsReached'][$k] = ($v > 1) ? 'no' :(
+                        ($v == 1 && $limits[$k] != 1)
+                        ? 'toConfirme'
+                        : 'yes'
+                    );
                 }
             }
+        }
+    }
+
+    protected function sanitizeLimits(int $limit, bool $limitByCat, array $neededByCat):array
+    {
+        if ($limit < 1){
+            $limit = self::MAXIMUM_RESULTS_BY_QUERY;
+        }
+        $limits = [];
+
+        if (!$limitByCat){
+            $limits['noCategory'] = $this->extractSanitizedLimitFromNeeded('noCategory',$neededByCat,$limit);
+        } else {
+            $limits['pages'] = $this->extractSanitizedLimitFromNeeded('pages',$neededByCat,$limit);
+            $limits['logpages'] = $this->extractSanitizedLimitFromNeeded('logpages',$neededByCat,$limit);
+            
+            $limits['entries'] = [];
+            $limits['entries']['default'] = $limit;
+            $limits['entries']['byForm'] = [];
+            if (!empty($neededByCat['entries']) && is_array($neededByCat['entries'])){
+                foreach($neededByCat['entries'] as $formId => $needed){
+                    if (intval($formId) > 0 && is_scalar($needed) && intval($needed) >= 0){
+                        $limits['entries']['byForm'][strval($formId)] = min(intval($needed),$limit);
+                    }
+                }
+            }
+            $limits['tags'] = [];
+            $limits['tags']['default'] = $limit;
+            $limits['tags']['byTag'] = [];
+            if (!empty($neededByCat['tags']) && is_array($neededByCat['tags'])){
+                foreach($neededByCat['tags'] as $tag => $needed){
+                    if (!empty($tag) && is_scalar($needed) && intval($needed) >= 0){
+                        $limits['tags']['byTag'][strval($tag)] = min(intval($needed),$limit);
+                    }
+                }
+            }
+        }
+
+        return $limits;
+    }
+
+    protected function extractSanitizedLimitFromNeeded(string $key,array $neededByCat, int $limit): int
+    {
+        if (array_key_exists($key,$neededByCat)){
+            $val = $neededByCat[$key];
+            $val = (is_scalar($val) && intval($val) > 0)
+                ? intval($val)
+                : 0;
+            return min($val,$limit);
+        } else {
+            return $limit;
         }
     }
 }
