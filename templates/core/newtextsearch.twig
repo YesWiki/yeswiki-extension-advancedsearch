@@ -83,6 +83,7 @@
         {{ block('link') }}
       </template>
     </p>
+    <div v-show="hasError" class="alert alert-warning" style="display:none">{{ _t('ADVANCEDSEARCH_HAS_ERROR') }}</div>
     <spinner-loader v-if="updating" class="overlay"></spinner-loader>
   </div>
   <spinner-loader v-else-if="updating" :height="400"></spinner-loader>

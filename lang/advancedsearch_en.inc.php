@@ -51,4 +51,5 @@ return [
    // templates/newtextsearch-by-category.twig
    'ADVANCEDSEARCH_SEE_MORE' => 'See more',
    'ADVANCEDSEARCH_TO_UPDATE' => 'To be updated',
+   'ADVANCEDSEARCH_HAS_ERROR' => 'An error occured. Results could be wrong.',
 ];

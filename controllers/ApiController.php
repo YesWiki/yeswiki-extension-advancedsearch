@@ -90,7 +90,8 @@ class ApiController extends YesWikiController
                 ])),
                 $this->filterInput(INPUT_GET, 'fast', FILTER_VALIDATE_BOOL, [
                     'default' => false
-                ])
+                ]),
+                isset($_GET['keepOnlyTags']) && is_array($_GET['keepOnlyTags']) ? $_GET['keepOnlyTags'] : []
             );
         }
         return new ApiResponse($results);

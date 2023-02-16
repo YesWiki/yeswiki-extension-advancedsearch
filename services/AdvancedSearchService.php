@@ -11,6 +11,7 @@
 
 namespace YesWiki\Advancedsearch\Service;
 
+use Throwable;
 use YesWiki\Bazar\Controller\EntryController;
 use YesWiki\Bazar\Service\EntryManager;
 use YesWiki\Bazar\Service\FormManager;
@@ -71,7 +72,8 @@ class AdvancedSearchService
         string $categoriesComaSeparated = '',
         string $excludesComaSeperated = '',
         string $onlytagsComaSeparated = '',
-        bool $fastMode = false): array
+        bool $fastMode = false,
+        array $keepOnlyTags = []): array
     {
         $limits = $this->sanitizeLimits($limit,$limitByCat,$neededByCat);
         
@@ -100,7 +102,21 @@ class AdvancedSearchService
         ];
         $this->addExcludesTags($sqlRequest, $excludes);
         $this->addOnlyTagsNames($sqlRequest, $onlytags);
-        if (empty($categories)) {
+        if (!empty($keepOnlyTags)){
+            $this->addKeepOnlyTags($sqlRequest, $keepOnlyTags);
+            $this->searchSQL(
+                $data,
+                $sqlRequest,
+                array_merge($sqlOptions, [
+                    'limit'=>count($keepOnlyTags)+1,
+                    'categories'=>'',
+                    'limitByCat'=>false,
+                    'limits' => [
+                        'noCategory' => count($keepOnlyTags)+1
+                    ]
+                ])
+            );
+        } elseif (empty($categories)) {
             if ($limitByCat) {
                 // remove log pages (default)
                 $sqlRequest = $this->removeLogPageFilter($sqlRequest);
@@ -129,7 +145,7 @@ class AdvancedSearchService
                             $sqlRequest,
                             $selectedTags
                         ),
-                        array_merge($sqlOptions, ['limit'=>$limits['tags']['default'],'limitByCat' => -1,'onlyTags'=>true])
+                        array_merge($sqlOptions, ['limit'=>$limits['tags']['default'],'limitByCat' => false,'onlyTags'=>true])
                     );
                 }
             } elseif (!empty($noTags)) {
@@ -266,13 +282,13 @@ class AdvancedSearchService
 
                     $saveData = $this->appendCategoryInfo($data, $limitsReached, $limits);
                     $data['preRendered']= "";
-
+                    
                     if (!$dataCompacted['extra']['timeLimitReached']) {
                         if (microtime(true) - $startTime > 2.5) {
                             $dataCompacted['extra']['timeLimitReached'] = true;
                         }
                         
-                        if (($onlyTags && $forceDisplay) || (!$dataCompacted['extra']['timeLimitReached']) && $saveData) {
+                        if ($onlyTags || $forceDisplay || (!$dataCompacted['extra']['timeLimitReached']) && $saveData) {
                             if ($displaytext) {
                                 $this->appendPreRendered($data, $searchText, $needles);
                             } elseif ($data['type'] != 'entry') {
@@ -300,7 +316,7 @@ class AdvancedSearchService
                     }
                 }
             }
-            $this->saveLimitsReachedInExtra($dataCompacted, $limitsReached);
+            $this->saveLimitsReachedInExtra($dataCompacted, $limitsReached,$limits);
         }
     }
 
@@ -480,6 +496,19 @@ class AdvancedSearchService
         }
     }
 
+    private function addKeepOnlyTags(string &$sqlRequest, array $tags)
+    {
+        $filtered = array_filter($tags, function ($tag) {
+            return is_string($tag) && !empty(trim($tag));
+        });
+        if (!empty($filtered)) {
+            $tagsSQL = implode(',', array_map(function ($tag) {
+                return "'{$this->dbService->escape(trim($tag))}'";
+            }, $filtered));
+            $sqlRequest .= " AND `tag` IN ($tagsSQL)";
+        }
+    }
+
     private function addOnlyTagsNames(string &$sqlRequest, array $tagsNames)
     {
         if (!empty($tagsNames)) {
@@ -628,7 +657,7 @@ class AdvancedSearchService
         } else {
             $limitsReached = [
                 'all' => false,
-                'total' => $limit,
+                'noCategory' => $limits['noCategory'] ?? $limit,
                 'autoFill' => false
             ];
         }
@@ -639,8 +668,8 @@ class AdvancedSearchService
     {
         if (
             (
-                isset($limitsReached['total']) &&
-                $limitsReached['total'] > 0
+                isset($limitsReached['noCategory']) &&
+                $limitsReached['noCategory'] >= 0
             ) ||
             $limitsReached['autoFill'] ||
             (
@@ -654,12 +683,12 @@ class AdvancedSearchService
             )
         ) {
             // load entries only if needed
-            if ($this->isEntryThenAppendEntryData($data)) {
+            if (!isset($limitsReached['noCategory']) && $this->isEntryThenAppendEntryData($data)) {
                 return $this->updateLimitsForEntry($limitsReached, $data, $limits);
             } else {
                 return $this->updateLimitsForPage($limitsReached, $data, $limits);
             }
-        } elseif (!$this->entryManager->isEntry($data['tag'])) {
+        } elseif (!isset($limitsReached['noCategory']) && !$this->entryManager->isEntry($data['tag'])) {
             return $this->updateLimitsForPage($limitsReached, $data, $limits);
         }
         return false;
@@ -720,9 +749,9 @@ class AdvancedSearchService
             if ($limitsReached[$data['type']] < 0){
                 return false;
             }
-        } elseif (isset($limitsReached['total'])) {
-            $limitsReached['total'] = $limitsReached['total'] - 1;
-            if ($limitsReached['total'] < 0){
+        } elseif (isset($limitsReached['noCategory'])) {
+            $limitsReached['noCategory'] = $limitsReached['noCategory'] - 1;
+            if ($limitsReached['noCategory'] < 0){
                 return false;
             }
         } else {
@@ -758,11 +787,18 @@ class AdvancedSearchService
         } else {
             $rawPage = $this->pageManager->getOne($data["tag"]);
             if (!empty($rawPage)) {
-                $data['preRendered'] = $this->displayNewSearchResult(
-                    $this->wiki->Format($rawPage, 'wakka', $data["tag"]),
-                    $searchText,
-                    $needles
-                );
+                try {
+                    $renderedContent = $this->wiki->Format($rawPage['body'], 'wakka', $data["tag"]);
+                    if (!empty($renderedContent)){
+                        $data['preRendered'] = $this->displayNewSearchResult(
+                            $this->wiki->Format($renderedContent, 'wakka', $data["tag"]),
+                            $searchText,
+                            $needles
+                        );
+                    }
+                } catch (Throwable $th) {
+                    // do nthing;
+                }
                 $this->appendTitleIfNeeded($data, $rawPage);
             }
         }
@@ -795,13 +831,13 @@ class AdvancedSearchService
                     if (is_array($v)) {
                         if (!empty($v)) {
                             foreach ($v as $subK => $subV) {
-                                if ($subV > 0) {
+                                if ($subV >= 0) {
                                     $someNotReached = true;
                                     break;
                                 }
                             }
                         }
-                    } elseif ($v > 0) {
+                    } elseif ($v >= 0) {
                         $someNotReached = true;
                     }
                 }
@@ -810,7 +846,7 @@ class AdvancedSearchService
         }
     }
 
-    private function saveLimitsReachedInExtra(array &$dataCompacted, array &$limitsReached)
+    private function saveLimitsReachedInExtra(array &$dataCompacted, array &$limitsReached, array $limits)
     {
         $dataCompacted['extra']['limitsReached'] = [];
         foreach ($limitsReached as $k => $v) {
@@ -819,16 +855,16 @@ class AdvancedSearchService
                     if (!empty($v)) {
                         $dataCompacted['extra']['limitsReached'][$k] = [];
                         foreach ($v as $subK => $subV) {
-                            $dataCompacted['extra']['limitsReached'][$k][strval($subK)] = ($subV > 0) ? 'no' :(
-                                $subV == 0
+                            $dataCompacted['extra']['limitsReached'][$k][strval($subK)] = ($subV > 1) ? 'no' :(
+                                ($subV == 1 && $limits[$k][strval($subK)] != 1)
                                 ? 'toConfirme'
                                 : 'yes'
                             );
                         }
                     }
                 } else {
-                    $dataCompacted['extra']['limitsReached'][$k] = ($v > 0) ? 'no' :(
-                        $v == 0
+                    $dataCompacted['extra']['limitsReached'][$k] = ($v > 1) ? 'no' :(
+                        ($v == 1 && $limits[$k] != 1)
                         ? 'toConfirme'
                         : 'yes'
                     );

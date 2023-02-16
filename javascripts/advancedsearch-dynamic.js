@@ -54,34 +54,34 @@ let appParams = {
         }
     },
     methods: {
-        appendNeededLimitsInParams(params,modeSeeMore){
+        appendNeededLimitsInParams(params,modeSeeMore,modeFirstLong){
             let modifiedParams = (typeof params === 'object') ? params : {}
             if (this.args.limit > 0){
                 this.updateVisible()
                 if (modifiedParams.limitByCat){
                     if ('page' in this.visible){
-                        modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[pages]',this.visible.page,modeSeeMore)
+                        modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[pages]',this.visible.page,modeSeeMore,modeFirstLong)
                     }
                     if ('logpage' in this.visible){
-                        modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[logpages]',this.visible.logpage,modeSeeMore)
+                        modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[logpages]',this.visible.logpage,modeSeeMore,modeFirstLong)
                     }
                     if ('forms' in this.visible){
                         Object.keys(this.visible.forms).forEach((formId)=>{
-                            modifiedParams = this.appendANeededLimitInParams(modifiedParams,`neededByCat[entries][${formId}]`,this.visible.forms[formId],modeSeeMore)
+                            modifiedParams = this.appendANeededLimitInParams(modifiedParams,`neededByCat[entries][${formId}]`,this.visible.forms[formId],modeSeeMore,modeFirstLong)
                         })
                     }
                     if ('tags' in this.visible){
                         Object.keys(this.visible.tags).forEach((tag)=>{
-                            modifiedParams = this.appendANeededLimitInParams(modifiedParams,`neededByCat[tags][${tag}]`,this.visible.tags[tag],modeSeeMore)
+                            modifiedParams = this.appendANeededLimitInParams(modifiedParams,`neededByCat[tags][${tag}]`,this.visible.tags[tag],modeSeeMore,modeFirstLong)
                         })
                     }
                 } else {
-                    modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[noCategory]',this.visible.noCategory,modeSeeMore)
+                    modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[noCategory]',this.visible.noCategory,modeSeeMore,modeFirstLong)
                 }
             }
             return modifiedParams
         },
-        appendANeededLimitInParams(params,name,data,modeSeeMore){
+        appendANeededLimitInParams(params,name,data,modeSeeMore,modeFirstLong){
             return {
                 ...params,
                 ...{
@@ -90,7 +90,7 @@ let appParams = {
                         data.seeMore == appAvancedSearchSeeMoreYes && data.ids.length > 0 
                         && (data.ids.length % this.args.limit) == 0
                     ))
-                        ? 0
+                        ? (modeFirstLong ? 1 : 0)
                         : this.args.limit - (data.ids.length % this.args.limit)
                 }
             }
@@ -157,7 +157,7 @@ let appParams = {
             let previousTags = currentResults.map((page)=>page.tag).join(',')
             return previousTags
         },
-        getParams(extraParams = {},modeSeeMore = false){
+        getParams(extraParams = {},modeSeeMore = false, modeFirstLong = false){
             if (typeof extraParams !== 'object'){
                 extraParams = {}
             }
@@ -173,7 +173,7 @@ let appParams = {
             }
             params.limit = this.args.limit ?? 0;
             params.limitByCat = (this.args.template == "newtextsearch-by-category.twig");
-            params = this.appendNeededLimitsInParams(params,modeSeeMore)
+            params = this.appendNeededLimitsInParams(params,modeSeeMore,modeFirstLong)
             for (const key in extraParams) {
                 if (key.length > 0){
                     params[key] = extraParams[key];
@@ -260,9 +260,16 @@ let appParams = {
             if (type != 'noCategory'){
                 params.categories = type
             }
-            return await this.searchLong(this.searchText,signal,params,true)
+            return await this.searchLong(this.searchText,signal,params,{modeSeeMore:true})
                 .then(()=>{
                     this.toggleDisplay()
+                })
+                .catch((error)=>{
+                  if (!this.isAbortError(error)){
+                      this.hasError = true
+                      this.stopUpdating()
+                      console.log({error})
+                  }
                 })
         },
         async processNewText({text,signal}){
@@ -280,14 +287,7 @@ let appParams = {
             return await this.searchFast(text,signal)
                 .then(({forceTitlesAndRender})=>{
                     let previousTags = this.getAlreadyLoadedIds('')
-                    if (this.args.template != "newtextsearch-by-category.twig" && previousTags.split(',').length == this.args.limit){
-                        if ('noCategory' in this.visible){
-                            this.visible.noCategory.seeMore = appAvancedSearchSeeMoreYes
-                            this.toggleDisplay()
-                        }
-                        return
-                    }
-                    return this.searchLong(text,signal,{excludes:previousTags},false,forceTitlesAndRender)
+                    return this.searchLong(text,signal,{excludes:previousTags},{forceTitlesAndRender,modeFirstLong:true})
                 })
         },
         async searchFast(text,signal){
@@ -297,42 +297,64 @@ let appParams = {
             return await this.getSearchViaApi(`search/${text}`,signal,params)
                 .then(({data,extra})=>{
                     this.updateResults(data,signal)
-                    this.updateVisible(extra,true)
+                    this.updateVisible(extra,{fast:true})
                     return {forceTitlesAndRender:('timeLimitReached' in extra && extra.timeLimitReached == true)}
                 })
                 .finally(()=>{
                     this.updating = false
                 })
         },
-        async searchLong(text,signal,params = {},modeSeeMore = false,forceTitlesAndRender = false,searchTags = true,tagMode = false){
+        async searchLong(text,signal,params = {},rawOptions = {}){
             let copiedParams = typeof params === 'object' ? params : {}
             if ('fast' in copiedParams){
                 copiedParams.fast = false
             }
+            let options = typeof rawOptions === 'object' ? rawOptions : {}
+            const defaultOptions = {
+                modeSeeMore: false,
+                forceTitlesAndRender: false,
+                searchTags: true,
+                tagMode: false,
+                modeFirstLong: false,
+                updateSeeMoreStatus: true
+            }
+            options = {
+                ...defaultOptions,
+                ...options
+            }
             this.throwIfAborted(signal)
             this.smallUpdating = true
-            copiedParams = this.getParams(copiedParams,modeSeeMore)
+            copiedParams = this.getParams(copiedParams,options.modeSeeMore,options.modeFirstLong)
             return await this.getSearchViaApi(`search/${text}`,signal,copiedParams)
                 .then(({data,extra})=>{
                     this.updateResults(data,signal)
-                    this.updateVisible(extra,false,true,tagMode)
-                    if (forceTitlesAndRender || ('timeLimitReached' in extra && extra.timeLimitReached == true)){
+                    this.updateVisible(extra,{displayAll:true,tagMode:options.tagMode,updateSeeMoreStatus:options.updateSeeMoreStatus})
+                    return {data,extra}
+                })
+                .then(({data,extra})=>{
+                    if (options.forceTitlesAndRender || ('timeLimitReached' in extra && extra.timeLimitReached == true)){
                         return this.updateTitlesIfNeeded(data,signal)
-                            .then(()=>{
-                                if (this.args.displaytext){
-                                    return this.updateRenderedIfNeeded(data,params,signal);
-                                }
-                            })
                             .then(()=>{
                                 return {data,extra}
                             })
+                    } else {
+                        return {data,extra}
                     }
-                    return {data,extra}
+                })
+                .then(({data,extra})=>{
+                    if (this.args.displaytext){
+                        return this.updateRenderedIfNeeded(data,params,signal,options.modeFirstLong)
+                            .then(()=>{
+                                return {data,extra}
+                            })
+                    } else {
+                        return {data,extra}
+                    }
                 })
                 .then(async ({data,extra})=>{
                     const isUpdatingOnlyOneCategory = ('categories' in params &&
                         !params.categories.includes(','))
-                    if (!isUpdatingOnlyOneCategory && searchTags && this.hasTagCategories){
+                    if (!isUpdatingOnlyOneCategory && options.searchTags && this.hasTagCategories){
                         await this.updateTagsIfNeeded(data,params,signal);
                     }
                 })
@@ -444,10 +466,10 @@ let appParams = {
                                 categories: tagCat
                             }
                         },
-                        false,
-                        false,
-                        false,
-                        true)
+                        {
+                            searchTags:false,
+                            tagMode: true
+                        })
                     }
                     const processTagsCat = async (tagsCat) => {
                         for (let index = 0; index < tagsCat.length; index++) {
@@ -461,18 +483,29 @@ let appParams = {
         async updateTitlesIfNeeded (data, signal){
             await this.updateObjectIfNeeded(data,'title','getTitles',signal)
         },
-        updateVisible(extra = {},fast = false, displayAll = false, tagMode = false) {  
+        updateVisible(extra = {},rawOptions = {}) {  
+            let options = typeof rawOptions === 'object' ? rawOptions : {}
+            const defaultOptions = {
+                fast: false,
+                displayAll: false,
+                tagMode: false,
+                updateSeeMoreStatus: true
+            }
+            options = {
+                ...defaultOptions,
+                ...options
+            }
             if (this.args.template == "newtextsearch-by-category.twig"){
                 if (this.args.displayorder.length == 0){
                     
-                    this.updateVisibleIds('page',this.args.limit,extra,fast,displayAll)
-                    this.updateVisibleEntries(this.args.limit,[],extra,fast,displayAll)
+                    this.updateVisibleIds('page',this.args.limit,extra,options)
+                    this.updateVisibleEntries(this.args.limit,[],extra,options)
                 } else {
                     if (this.args.displayorder.includes('page')){
-                        this.updateVisibleIds('page',this.args.limit,extra,fast,displayAll)
+                        this.updateVisibleIds('page',this.args.limit,extra,options)
                     }
                     if (this.args.displayorder.includes('logpag')){
-                        this.updateVisibleIds('logpage',this.args.limit,extra,fast,displayAll)
+                        this.updateVisibleIds('logpage',this.args.limit,extra,options)
                     }
                     let formIds = []
                     let tags = []
@@ -484,18 +517,18 @@ let appParams = {
                         }
                     })
                     if (formIds.length > 0){
-                        this.updateVisibleEntries(this.args.limit,formIds,extra,fast,displayAll)
+                        this.updateVisibleEntries(this.args.limit,formIds,extra,options)
                     }
                     if (tags.length > 0){
-                        this.updateVisibleTags(this.args.limit,tags,extra,fast,displayAll,tagMode)
+                        this.updateVisibleTags(this.args.limit,tags,extra,options)
                     }
                 }
 
             } else {
-                this.updateVisibleIds('noCategory',this.args.limit,extra,false,displayAll)
+                this.updateVisibleIds('noCategory',this.args.limit,extra,options)
             }
         },
-        updateVisibleEntries(limit,formIds = [],extra={},fast = false,displayAll = false){
+        updateVisibleEntries(limit,formIds = [],extra={},options = {}){
             let {forms} = this.filterEntriesOnResults(this.results,formIds)
             for (const key in forms) {
                 if (!('forms' in this.visible)){
@@ -507,28 +540,30 @@ let appParams = {
                         ids: []
                     }
                 }
-                this.udpateVisibleItem(extra,limit,fast,forms[key],this.visible.forms[key],(limitsReached)=>('forms' in limitsReached && key in limitsReached.forms)? limitsReached.forms[key] : '',displayAll)
+                this.udpateVisibleItem(extra,limit,forms[key],this.visible.forms[key],(limitsReached)=>('forms' in limitsReached && key in limitsReached.forms)? limitsReached.forms[key] : '',options)
             }
         },
-        udpateVisibleItem(extra,limit,fast,ids,baseObj,extractLimit,displayAll,tagMode= false){
+        udpateVisibleItem(extra,limit,ids,baseObj,extractLimit,options){
             if (baseObj.seeMore === appAvancedSearchSeeMoreNo){
                 baseObj.ids = ids
-            } else if (displayAll && (
+            } else if (options.displayAll && (
                 !('limitsReached' in extra) ||
                 ('limitsReached' in extra && typeof extractLimit === 'function' && extractLimit(extra.limitsReached) == 'no')
             )) {
                 baseObj.ids = ids
-                baseObj.seeMore = appAvancedSearchSeeMoreNo
+                if (options.updateSeeMoreStatus){
+                    baseObj.seeMore = appAvancedSearchSeeMoreNo
+                }
             } else {
                 let nbToKeep = (limit === 0) ? 0 : Math.min(Math.max(Math.floor(ids.length / limit),1)*limit,ids.length)
                 baseObj.ids = ids.slice(0,nbToKeep)
-                if ('limitsReached' in extra){
+                if (options.updateSeeMoreStatus && 'limitsReached' in extra){
                     let extract = (typeof extractLimit === 'function') ? extractLimit(extra.limitsReached): ''
                     baseObj.seeMore = (limit <= 0) 
                         ? appAvancedSearchSeeMoreToUpdate
                         : (
                             (
-                                Math.ceil(baseObj.ids.length / limit)*limit == baseObj.ids.length &&
+                                Math.floor(baseObj.ids.length / limit)*limit == baseObj.ids.length &&
                                 ids.length > baseObj.ids.length
                             )
                             ? appAvancedSearchSeeMoreYes
@@ -536,7 +571,7 @@ let appParams = {
                                 extract == 'yes'
                                 ? appAvancedSearchSeeMoreYes
                                 : (
-                                    ((!fast && extract == 'no') || tagMode)
+                                    ((!options.fast && extract == 'no') || options.tagMode)
                                     ? appAvancedSearchSeeMoreNo
                                     : appAvancedSearchSeeMoreToUpdate
                                 )
@@ -545,7 +580,7 @@ let appParams = {
                 }
             }
         },
-        updateVisibleIds(category,limit,extra = {},fast = false,displayAll = false){
+        updateVisibleIds(category,limit,extra = {},options = {}){
             let ids = (category == 'noCategory') ? Object.keys(this.results) : this.filterResultsAccordingType(this.results,category)
             if (!(category in this.visible)){
                 this.visible[category] = {
@@ -553,9 +588,9 @@ let appParams = {
                     ids: []
                 }
             }
-            this.udpateVisibleItem(extra,limit,fast,ids,this.visible[category],(limitsReached)=>limitsReached[category],displayAll)
+            this.udpateVisibleItem(extra,limit,ids,this.visible[category],(limitsReached)=>limitsReached[category] || '',options)
         },
-        updateVisibleTags(limit,tagsToKeep = [],extra = {},fast = false,displayAll = false, tagMode = false){
+        updateVisibleTags(limit,tagsToKeep = [],extra = {},options = {}){
             let {tags} = this.filterTagsOnResults(this.results,tagsToKeep)
             for (const key in tags) {
                 if (!('tags' in this.visible)){
@@ -567,19 +602,21 @@ let appParams = {
                         ids: []
                     }
                 }
-                this.udpateVisibleItem(extra,limit,fast,tags[key],this.visible.tags[key],(limitsReached)=>('tags' in limitsReached && key in limitsReached.tags)? limitsReached.tags[key] : '',displayAll,tagMode)
+                this.udpateVisibleItem(extra,limit,tags[key],this.visible.tags[key],(limitsReached)=>('tags' in limitsReached && key in limitsReached.tags)? limitsReached.tags[key] : '',options)
             }
         },
-        async updateRenderedIfNeeded(data,params,signal){
-            if (Array.isArray(data.results)){
-                let entriesWithoutPreRendered = data.results.filter((page)=>(!('preRendered' in page)||page.preRendered.length == 0));
+        async updateRenderedIfNeeded(data,params,signal,modeFirstLong){
+            if (modeFirstLong || Array.isArray(data.results)){
+                let base = modeFirstLong ? Object.keys(this.results).map((id)=>this.results[id]) : data.results
+                let entriesWithoutPreRendered = base.filter((page)=>(!('preRendered' in page)||page.preRendered.length == 0));
                 if (entriesWithoutPreRendered.length > 0){
-                    await this.searchLong(this.searchText,signal,{
-                        ...params,
-                        ...{
-                            forceDisplay: true
-                        }
-                    },false,false)
+                    let copiedParams = {...params}
+                    if ('excludes' in copiedParams){
+                        delete copiedParams.excludes
+                    }
+                    copiedParams.forceDisplay = true
+                    entriesWithoutPreRendered.forEach((e,idx)=>{copiedParams[`keepOnlyTags[${idx}]`]=e.tag})
+                    await this.searchLong(this.searchText,signal,copiedParams,{updateSeeMoreStatus:false})
                 }
             }
         },
@@ -618,6 +655,7 @@ let appParams = {
             history.pushState({ filter: true }, null, newUrl)
         },
         async waitForOff(reason = null){
+            this.hasError = false
             let errorTriggerred = false
             let err = null
             try {
