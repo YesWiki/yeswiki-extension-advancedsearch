@@ -33,6 +33,17 @@ p.search-results > i {
   margin-bottom: 0.2rem;
 }
 
+@keyframes spinner-rotation {
+  from {transform: rotate(0deg);}
+  to {transform: rotate(360deg);}
+}
+
+.spinner-rotation-effet {
+  animation-name: spinner-rotation;
+  animation-duration: 3s;
+  animation-iteration-count: infinite;
+}
+
 
 /* à retirer après fusion dans le coeur - thème margot */
 
