@@ -98,7 +98,8 @@ class AdvancedSearchService
             'categories' => $categories,
             'forceDisplay' => $forceDisplay,
             'limits' => $limits,
-            'onlyTags' => false
+            'onlyTags' => false,
+            'fastMode' => $fastMode
         ];
         $this->addExcludesTags($sqlRequest, $excludes);
         $this->addOnlyTagsNames($sqlRequest, $onlytags);
@@ -265,7 +266,8 @@ class AdvancedSearchService
             'startTime' => $startTime,
             'forceDisplay' => $forceDisplay,
             'limits' => $limits,
-            'onlyTags' => $onlyTags
+            'onlyTags' => $onlyTags,
+            'fastMode' => $fastMode
         ) = $sqlOptions;
         $sqlRequest = $this->addSQLLimit($sqlRequest, $limit+(($limit < self::MAXIMUM_RESULTS_BY_QUERY && $limit > 1)?$limit:1));
         $results = $this->dbService->loadAll($sqlRequest);
@@ -311,7 +313,7 @@ class AdvancedSearchService
                     }
                 }
             }
-            $this->saveLimitsReachedInExtra($dataCompacted, $limitsReached,$limits);
+            $this->saveLimitsReachedInExtra($dataCompacted, $limitsReached,$limits,$fastMode);
         }
     }
 
@@ -841,7 +843,7 @@ class AdvancedSearchService
         }
     }
 
-    private function saveLimitsReachedInExtra(array &$dataCompacted, array &$limitsReached, array $limits)
+    private function saveLimitsReachedInExtra(array &$dataCompacted, array &$limitsReached, array $limits, bool $fastMode)
     {
         $dataCompacted['extra']['limitsReached'] = [];
         foreach ($limitsReached as $k => $v) {
@@ -851,16 +853,16 @@ class AdvancedSearchService
                         $dataCompacted['extra']['limitsReached'][$k] = [];
                         foreach ($v as $subK => $subV) {
                             $dataCompacted['extra']['limitsReached'][$k][strval($subK)] = ($subV > 1) ? 'no' :(
-                                ($subV == 1 && $limits[$k][strval($subK)] != 1)
-                                ? 'toConfirme'
+                                ($subV == 1 && isset($limits[$k][strval($subK)]) && $limits[$k][strval($subK)] != 1)
+                                ? ($fastMode ? 'toConfirme' : 'no')
                                 : 'yes'
                             );
                         }
                     }
                 } else {
                     $dataCompacted['extra']['limitsReached'][$k] = ($v > 1) ? 'no' :(
-                        ($v == 1 && $limits[$k] != 1)
-                        ? 'toConfirme'
+                        ($v == 1 && isset($limits[$k]) && $limits[$k] != 1)
+                        ? ($fastMode ? 'toConfirme' : 'no')
                         : 'yes'
                     );
                 }

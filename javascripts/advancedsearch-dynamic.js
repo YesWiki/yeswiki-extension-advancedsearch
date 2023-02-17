@@ -54,10 +54,10 @@ let appParams = {
         }
     },
     methods: {
-        appendNeededLimitsInParams(params,modeSeeMore,modeFirstLong){
+        appendNeededLimitsInParams(params,modeSeeMore,modeFirstLong,options){
             let modifiedParams = (typeof params === 'object') ? params : {}
             if (this.args.limit > 0){
-                this.updateVisible()
+                this.updateVisible({},{...options,...{updateSeeMoreStatus:false}})
                 if (modifiedParams.limitByCat){
                     if ('page' in this.visible){
                         modifiedParams = this.appendANeededLimitInParams(modifiedParams,'neededByCat[pages]',this.filterResultsAccordingType(this.results,'page'),this.visible.page,modeSeeMore,modeFirstLong)
@@ -157,7 +157,7 @@ let appParams = {
             let previousTags = currentResults.map((page)=>page.tag).join(',')
             return previousTags
         },
-        getParams(extraParams = {},modeSeeMore = false, modeFirstLong = false){
+        getParams(extraParams = {},modeSeeMore = false, modeFirstLong = false,options={}){
             if (typeof extraParams !== 'object'){
                 extraParams = {}
             }
@@ -167,13 +167,14 @@ let appParams = {
             }
             if ('displayorder' in this.args && this.args.displayorder.length > 0){
                 params.categories = Array.isArray(this.args.displayorder) ? this.args.displayorder.join(',') : this.args.displayorder;
+                options.categories = params.categories
             }
             if ('onlytags' in this.args && this.args.onlytags.length > 0){
                 params.onlytags = this.args.onlytags.join(',');
             }
             params.limit = this.args.limit ?? 0;
             params.limitByCat = (this.args.template == "newtextsearch-by-category.twig");
-            params = this.appendNeededLimitsInParams(params,modeSeeMore,modeFirstLong)
+            params = this.appendNeededLimitsInParams(params,modeSeeMore,modeFirstLong,options)
             for (const key in extraParams) {
                 if (key.length > 0){
                     params[key] = extraParams[key];
@@ -301,11 +302,12 @@ let appParams = {
         async searchFast(text,signal){
             this.throwIfAborted(signal)
             this.updating = true
-            let params = this.getParams({fast:true},false)
+            let options = {fast:true}
+            let params = this.getParams({fast:true},false,false,options)
             return await this.getSearchViaApi(`search/${text}`,signal,params)
                 .then(({data,extra})=>{
                     this.updateResults(data,signal)
-                    this.updateVisible(extra,{fast:true})
+                    this.updateVisible(extra,options)
                     return {forceTitlesAndRender:('timeLimitReached' in extra && extra.timeLimitReached == true)}
                 })
                 .finally(()=>{
@@ -332,11 +334,14 @@ let appParams = {
             }
             this.throwIfAborted(signal)
             this.smallUpdating = true
-            copiedParams = this.getParams(copiedParams,options.modeSeeMore,options.modeFirstLong)
+            copiedParams = this.getParams(copiedParams,options.modeSeeMore,options.modeFirstLong,options)
+            if ('categories' in copiedParams){
+                options.categories = copiedParams.categories
+            }
             return await this.getSearchViaApi(`search/${text}`,signal,copiedParams)
                 .then(({data,extra})=>{
                     this.updateResults(data,signal)
-                    this.updateVisible(extra,{...options,...{displayAll:true}})
+                    this.updateVisible(extra,options)
                     return {data,extra}
                 })
                 .then(({data,extra})=>{
@@ -495,10 +500,10 @@ let appParams = {
             let options = typeof rawOptions === 'object' ? rawOptions : {}
             const defaultOptions = {
                 fast: false,
-                displayAll: false,
                 tagMode: false,
                 updateSeeMoreStatus: true,
-                modeFirstLong: false
+                modeFirstLong: false,
+                categories: ''
             }
             options = {
                 ...defaultOptions,
@@ -513,7 +518,7 @@ let appParams = {
                     if (this.args.displayorder.includes('page')){
                         this.updateVisibleIds('page',this.args.limit,extra,options)
                     }
-                    if (this.args.displayorder.includes('logpag')){
+                    if (this.args.displayorder.includes('logpage')){
                         this.updateVisibleIds('logpage',this.args.limit,extra,options)
                     }
                     let formIds = []
@@ -549,44 +554,33 @@ let appParams = {
                         ids: []
                     }
                 }
-                this.udpateVisibleItem(extra,limit,forms[key],this.visible.forms[key],(limitsReached,modeFirstLong)=>('forms' in limitsReached && key in limitsReached.forms)? limitsReached.forms[key] : (modeFirstLong ? 'no' : ''),options)
+                this.udpateVisibleItem(key,extra,limit,forms[key],this.visible.forms[key],(limitsReached,modeFirstLong)=>('forms' in limitsReached && key in limitsReached.forms)? limitsReached.forms[key] : (modeFirstLong ? 'no' : ''),options)
             }
         },
-        udpateVisibleItem(extra,limit,ids,baseObj,extractLimit,options){
+        udpateVisibleItem(cat,extra,limit,ids,baseObj,extractLimit,options){
+            let nbToKeep = (limit === 0) ? 0 : Math.min(Math.max(Math.floor(ids.length / limit),1)*limit,ids.length)
+            if (options.updateSeeMoreStatus && limit > 0 && (options.categories.length === 0 || options.categories.includes(cat))){
+                if (
+                    !(options.fast || 'limitsReached' in extra) ||
+                    (
+                        'limitsReached' in extra && 
+                        typeof extractLimit === 'function' && 
+                        extractLimit(extra.limitsReached,options.modeFirstLong) == 'no'
+                    )){
+                    baseObj.seeMore = appAvancedSearchSeeMoreNo
+                } else {
+                    let extract = ('limitsReached' in extra && typeof extractLimit === 'function') ? extractLimit(extra.limitsReached,options.modeFirstLong): ''
+                    if (extract == 'yes' || (Math.floor(nbToKeep / limit)*limit == nbToKeep && ids.length > nbToKeep)) {
+                        baseObj.seeMore = appAvancedSearchSeeMoreYes
+                    } else if ((!options.fast && extract == 'no') || options.tagMode) {
+                        baseObj.seeMore = appAvancedSearchSeeMoreNo
+                    }
+                }
+            }
             if (baseObj.seeMore === appAvancedSearchSeeMoreNo){
                 baseObj.ids = ids
-            } else if (options.displayAll && (
-                !('limitsReached' in extra) ||
-                ('limitsReached' in extra && typeof extractLimit === 'function' && extractLimit(extra.limitsReached,options.modeFirstLong) == 'no')
-            )) {
-                baseObj.ids = ids
-                if (options.updateSeeMoreStatus){
-                    baseObj.seeMore = appAvancedSearchSeeMoreNo
-                }
             } else {
-                let nbToKeep = (limit === 0) ? 0 : Math.min(Math.max(Math.floor(ids.length / limit),1)*limit,ids.length)
                 baseObj.ids = ids.slice(0,nbToKeep)
-                if (options.updateSeeMoreStatus && 'limitsReached' in extra){
-                    let extract = (typeof extractLimit === 'function') ? extractLimit(extra.limitsReached,options.modeFirstLong): ''
-                    baseObj.seeMore = (limit <= 0) 
-                        ? appAvancedSearchSeeMoreToUpdate
-                        : (
-                            (
-                                Math.floor(baseObj.ids.length / limit)*limit == baseObj.ids.length &&
-                                ids.length > baseObj.ids.length
-                            )
-                            ? appAvancedSearchSeeMoreYes
-                            : (
-                                extract == 'yes'
-                                ? appAvancedSearchSeeMoreYes
-                                : (
-                                    ((!options.fast && extract == 'no') || options.tagMode)
-                                    ? appAvancedSearchSeeMoreNo
-                                    : appAvancedSearchSeeMoreToUpdate
-                                )
-                            )
-                        ) 
-                }
             }
         },
         updateVisibleIds(category,limit,extra = {},options = {}){
@@ -597,7 +591,7 @@ let appParams = {
                     ids: []
                 }
             }
-            this.udpateVisibleItem(extra,limit,ids,this.visible[category],(limitsReached,modeFirstLong)=>limitsReached[category] || (modeFirstLong ? 'no' : ''),options)
+            this.udpateVisibleItem((category == 'noCategory') ? '' : category,extra,limit,ids,this.visible[category],(limitsReached,modeFirstLong)=>limitsReached[category] || (modeFirstLong ? 'no' : ''),options)
         },
         updateVisibleTags(limit,tagsToKeep = [],extra = {},options = {}){
             let {tags} = this.filterTagsOnResults(this.results,tagsToKeep)
@@ -611,7 +605,7 @@ let appParams = {
                         ids: []
                     }
                 }
-                this.udpateVisibleItem(extra,limit,tags[key],this.visible.tags[key],(limitsReached,modeFirstLong)=>('tags' in limitsReached && key in limitsReached.tags)? limitsReached.tags[key] : (modeFirstLong ? 'no' : ''),options)
+                this.udpateVisibleItem(`tag:${key}`,extra,limit,tags[key],this.visible.tags[key],(limitsReached,modeFirstLong)=>('tags' in limitsReached && key in limitsReached.tags)? limitsReached.tags[key] : (modeFirstLong ? 'no' : ''),options)
             }
         },
         async updateRenderedIfNeeded(data,params,signal,modeFirstLong){
