@@ -285,6 +285,14 @@ let appParams = {
             }
             this.updateUrl(text)
             return await this.searchFast(text,signal)
+                .catch((error)=>{
+                    if (typeof error === 'string' && error.match(/^response not ok ; code : 500.*$/) && this.args.displaytext){
+                        this.args.displaytext = false
+                        return this.searchFast(text,signal)
+                    } else {
+                        throw error
+                    }
+                })
                 .then(({forceTitlesAndRender})=>{
                     let previousTags = this.getAlreadyLoadedIds('')
                     return this.searchLong(text,signal,{excludes:previousTags},{forceTitlesAndRender,modeFirstLong:true})
