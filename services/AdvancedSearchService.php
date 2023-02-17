@@ -429,6 +429,12 @@ class AdvancedSearchService
                 $searches[] = '('.implode(' OR ', $currentSearches).')';
             }
             $requeteSQL = '('.implode(' AND ', $searches).')';
+        } else {
+            $requeteSQL = ' 1 ';
+        }
+        // filter on read ACL
+        if (!$this->wiki->UserIsAdmin()) {
+            $requeteSQL .= $this->aclService->updateRequestWithACL();
         }
 
         $requestfull = <<<SQL
