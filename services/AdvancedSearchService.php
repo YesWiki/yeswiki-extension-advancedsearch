@@ -70,7 +70,7 @@ class AdvancedSearchService
         bool $displayText = false,
         bool $forceDisplay = false,
         string $categoriesComaSeparated = '',
-        string $excludesComaSeperated = '',
+        string $excludesComaSeparated = '',
         string $onlytagsComaSeparated = '',
         bool $fastMode = false,
         array $keepOnlyTags = []): array
@@ -80,11 +80,11 @@ class AdvancedSearchService
         $categories = empty($categoriesComaSeparated)
             ? []
             : array_map('strval', explode(',', $categoriesComaSeparated));
-        $excludes = empty($excludesComaSeperated) ? [] : explode(',', $excludesComaSeperated);
+        $excludes = empty($excludesComaSeparated) ? [] : explode(',', $excludesComaSeparated);
         $onlytags = empty($onlytagsComaSeparated) ? [] : explode(',', $onlytagsComaSeparated);
         $startTime = microtime(true);
 
-        list('requestfull' => $sqlRequest, 'needles' => $needles) = $this->getSqlRequest($text, !$fastMode);
+        list('requestfull' => $sqlRequest, 'needles' => $needles) = $this->getSqlRequest($text, $fastMode);
         $data = [
             'results' => [],
             'extra' => []
@@ -381,28 +381,35 @@ class AdvancedSearchService
         SQL;
     }
 
-    private function getSqlRequest(string $searchText, bool $searchInListInEntries = false): array
+    private function getSqlRequest(string $searchText, bool $fastMode = false): array
     {
         // extract needles with values in list
         // find in values for entries
-        $forms = $searchInListInEntries ? $this->formManager->getAll() : [];
+        $forms = !$fastMode ? $this->formManager->getAll() : [];
         $needles = $this->searchManager->searchWithLists($searchText, $forms);
         if (!empty($needles)) {
             $searches = [];
             // generate search
             foreach ($needles as $needle => $results) {
+                $reverseNeedle = $this->reverseNeedle($needle);
                 $currentSearches = [];
-                // add regexp standard search in page not entries
-                $needleFormatted = $this->prepareNeedleForRegexpCaseInsensitive($needle);
-                $search = str_replace('_', '\\_', $needleFormatted);
-                $currentSearches[] = 'body REGEXP \''.$search.'\'';
+                if ($fastMode){
+                    $currentSearches[] = "body LIKE '$reverseNeedle'";
+                    $search = $this->convertToRawJSONStringForREGEXP($reverseNeedle);
+                    $currentSearches[] = "body REGEXP '$search'";
+                } else {
+                    // add regexp standard search in page not entries
+                    $needleFormatted = $this->prepareNeedleForRegexpCaseInsensitive($needle);
+                    $search = str_replace('_', '\\_', $needleFormatted);
+                    $currentSearches[] = "body REGEXP '$search'";
+    
+                    // add regexp standard search for entries
+                    $search = $this->convertToRawJSONStringForREGEXP($needleFormatted);
+                    $search = str_replace('_', '\\_', $search);
+                    $currentSearches[] = "body REGEXP '$search'";
+                }
 
-                // add regexp standard search for entries
-                $search = $this->convertToRawJSONStringForREGEXP($needleFormatted);
-                $search = str_replace('_', '\\_', $search);
-                $currentSearches[] = 'body REGEXP \''.$search.'\'';
-
-                if ($searchInListInEntries && !empty($results)) {
+                if (!$fastMode && !empty($results)) {
                     // add search in list
                     // $results is an array not empty only if list
                     foreach ($results as $result) {
@@ -919,5 +926,37 @@ class AdvancedSearchService
         } else {
             return $limit;
         }
+    }
+
+    protected function reverseNeedle(string $needle){
+        return str_replace(
+            [
+                '(a|à|á|â|ã|ä|A|À|Á|Â|Ã|Ä)',
+                '(c|ç|C|Ç)',
+                '(e|è|é|ê|ë|E|È|É|Ê|Ë)',
+                '(i|ì|í|î|ï|I|Ì|Í|Î|Ï)',
+                '(n|ñ|N|Ñ)',
+                '(o|ò|ó|ô|õ|ö|O|Ò|Ó|Ô|Õ|Ö)',
+                '(u|ù|ú|û|ü|U|Ù|Ú|Û|Ü)',
+                '(y|ý|ÿ|Y|Ý)',
+                '\\(',
+                '\\)',
+                '\\/'
+            ],
+            [
+                'a',
+                'c',
+                'e',
+                'i',
+                'n',
+                'o',
+                'u',
+                'y',
+                '(',
+                ')',
+                '/'
+            ],
+            $needle
+        );
     }
 }
