@@ -291,7 +291,7 @@ let appParams = {
                         this.args.displaytext = false
                         return this.searchFast(text,signal)
                     } else {
-                        throw error
+                        return Promise.reject(error)
                     }
                 })
                 .then(({forceTitlesAndRender})=>{
@@ -406,11 +406,6 @@ let appParams = {
             }
             if (currentSignal.aborted){
                 throw currentSignal.reason
-            }
-        },
-        throwIfNotAbortError(error){
-            if (!this.isAbortError(error)){
-                throw error;
             }
         },
         toggleDisplay(){
