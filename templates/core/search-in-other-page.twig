@@ -8,10 +8,11 @@
     <div class="bazar-search control-group">
       <input type="hidden" value="" name="{{ linkedPage ~ (url({tag:linkedPage}) matches '/iframe$/' ? '/iframe' : '') }}" />
       <div class="input-group input-prepend input-append">
-        <span class="add-on input-group-addon"><i class="fa fa-search icon-search"></i></span>
         <input type="text" value="{{ keywords }}" name="phrase" placeholder="{{ _t('BAZ_MOT_CLE') }}" class="search-input form-control input-lg">
         <span class="input-group-btn search-button-container">
-          <input value="{{ _t('BAZ_RECHERCHER') }}" class="btn btn-primary" type="submit" />
+          <button
+              type="submit"
+              class="btn btn-search">{{ args.button | raw }}</button>
         </span>
       </div>
     </div>

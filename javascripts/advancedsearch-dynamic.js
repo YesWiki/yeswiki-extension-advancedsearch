@@ -734,7 +734,7 @@ let appParams = {
         if (this.textInput && this.textInput != undefined) {
             this.searchText = this.textInput.val();
             $(this.textInput).on('change',()=>this.updateSearchText());
-            $(this.textInput).parent().find('input[type=submit]').on('click',(event)=>{
+            $(this.textInput).parent().find('button[type=submit]').on('click',(event)=>{
                 event.preventDefault();
                 this.updateSearchText();
             });
