@@ -39,8 +39,6 @@ class NewTextSearchAction__ extends YesWikiAction
             'label' => isset($arg['label']) && is_string($arg['label']) ? $arg['label'] : _t('WHAT_YOU_SEARCH')." : ",
             // largeur de la zone de saisie
             'size' => isset($arg['size']) && is_scalar($arg['size']) ? intval($arg['size']) : 40,
-            // texte du bouton
-            'button' => !empty($arg['button']) && is_string($arg['button']) ? $arg['button'] : '&#xf002;', // search icon
             // texte à chercher
             'phrase' => isset($arg['phrase']) && is_string($arg['phrase']) ? $arg['phrase'] : '',
             // séparateur entre les éléments trouvés

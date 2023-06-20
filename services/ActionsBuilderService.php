@@ -80,11 +80,6 @@ trait ActionsBuilderServiceCommon
                     'default' => "40",
                     'min' => '1',
                 ];
-                $this->data['action_groups']['advanced-actions']['actions']['newtextsearch']['properties']['button'] = [
-                    'label' => _t('AB_advanced_action_textsearch_button_label'),
-                    'type' => "text",
-                    'default' => _t('SEARCH'),
-                ];
                 $this->data['action_groups']['advanced-actions']['actions']['newtextsearch']['properties']['template'] = [
                     'label' => _t('AB_advanced_action_newtextsearch_template_label'),
                     'type' => "list",
