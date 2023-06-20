@@ -394,18 +394,19 @@ class AdvancedSearchService
                 $reverseNeedle = $this->reverseNeedle($needle);
                 $currentSearches = [];
                 if ($fastMode){
+                    $currentSearches[] = "body LIKE '$reverseNeedle'";
                     $search = $this->convertToRawJSONStringForREGEXP($reverseNeedle);
-                    $currentSearches[] = "body REGEXP '\\\\b$search\\\\b'";
+                    $currentSearches[] = "body REGEXP '$search'";
                 } else {
                     // add regexp standard search in page not entries
                     $needleFormatted = $this->prepareNeedleForRegexpCaseInsensitive($needle);
                     $search = str_replace('_', '\\_', $needleFormatted);
-                    $currentSearches[] = "body REGEXP '\\\\b$search\\\\b'";
+                    $currentSearches[] = "body REGEXP '$search'";
 
                     // add regexp standard search for entries
                     $search = $this->convertToRawJSONStringForREGEXP($needleFormatted);
                     $search = str_replace('_', '\\_', $search);
-                    $currentSearches[] = "body REGEXP '\\\\b$search\\\\b'";
+                    $currentSearches[] = "body REGEXP '$search'";
                 }
 
                 if (!$fastMode && !empty($results)) {
