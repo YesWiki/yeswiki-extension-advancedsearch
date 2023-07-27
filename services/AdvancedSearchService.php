@@ -21,6 +21,7 @@ use YesWiki\Core\Service\DbService;
 use YesWiki\Core\Service\PageManager;
 use YesWiki\Core\Service\TemplateEngine;
 use YesWiki\Tags\Service\TagsManager;
+use YesWiki\Templates\Service\Utils;
 use YesWiki\Wiki;
 
 class AdvancedSearchService
@@ -816,14 +817,30 @@ class AdvancedSearchService
 
     private function appendTitleIfNeeded(array &$data, array $rawPage = [])
     {
-        if (empty($data['title']) && function_exists('getTitleFromBody')) {
-            if (empty($rawPage)) {
-                $rawPage = $this->pageManager->getOne($data['tag']);
-            }
-            if (!empty($rawPage)) {
-                $titleFormPage = getTitleFromBody($rawPage);
-                if (!empty($titleFormPage)) {
-                    $data['title'] = $titleFormPage;
+        if (empty($data['title'])){
+            $utils = $this->wiki->services->has(Utils::class)
+                ? $this->wiki->services->get(Utils::class)
+                : null;
+            $functionToCall = function_exists('getTitleFromBody')
+                ? function ($rawPage) {
+                    return getTitleFromBody($rawPage);
+                }
+                : (
+                    (!is_null($utils) && method_exists($utils,'getTitleFromBody'))
+                    ? function ($rawPage) use ($utils) {
+                        return $utils->getTitleFromBody($rawPage);
+                    }
+                    : null
+                );
+            if (!is_null($utils)){
+                if (empty($rawPage)) {
+                    $rawPage = $this->pageManager->getOne($data['tag']);
+                }
+                if (!empty($rawPage)) {
+                    $titleFormPage = $functionToCall($rawPage);
+                    if (!empty($titleFormPage)) {
+                        $data['title'] = $titleFormPage;
+                    }
                 }
             }
         }
